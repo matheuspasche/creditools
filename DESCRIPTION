@@ -1,0 +1,29 @@
+Package: creditSimulator
+Title: Credit Decision Simulation System
+Version: 1.0.0
+Authors@R: 
+    person("Analyst", "Credit", email = "analyst@example.com", role = c("aut", "cre"))
+Description: A flexible system for simulating credit decision processes with
+    multiple scores, stages, and optimization capabilities.
+License: MIT + file LICENSE
+Encoding: UTF-8
+LazyData: true
+Roxygen: list(markdown = TRUE)
+Imports:
+    cli (>= 3.0.0),
+    dplyr (>= 1.0.0),
+    rlang (>= 0.4.0),
+    purrr (>= 0.3.0),
+    stats (>= 4.0.0),
+    tibble (>= 3.0.0),
+    tidyr (>= 1.1.0),
+    stringr (>= 1.4.0)
+Suggests:
+    testthat (>= 3.0.0),
+    knitr,
+    rmarkdown,
+    usethis,
+    future,
+    furrr
+Config/testthat/edition: 3
+RoxygenNote: 7.2.1
