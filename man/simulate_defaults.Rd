@@ -2,11 +2,11 @@
 % Please edit documentation in R/simulation.R
 \name{simulate_defaults}
 \alias{simulate_defaults}
-\title{Simulate defaults}
+\title{Simulate defaults with configurable risk relationships}
 \usage{
 simulate_defaults(data, score_col, config, col_names)
 }
 \description{
-Simulate defaults
+Simulate defaults with configurable risk relationships
 }
 \keyword{internal}

@@ -2,11 +2,11 @@
 % Please edit documentation in R/simulation.R
 \name{evaluate_score}
 \alias{evaluate_score}
-\title{Evaluate a specific score}
+\title{Evaluate a specific score with eligibility enforcement}
 \usage{
 evaluate_score(data, score_col, config)
 }
 \description{
-Evaluate a specific score
+Evaluate a specific score with eligibility enforcement
 }
 \keyword{internal}

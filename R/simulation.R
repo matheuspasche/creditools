@@ -4,10 +4,12 @@
 #' @param config Simulation configuration
 #' @param parallel Whether to use parallel processing
 #' @param n_cores Number of cores for parallel processing
+#' @param show_progress Whether to show progress bar
 #'
 #' @return Simulation results
 #' @export
-simulate_credit_process <- function(data, config, parallel = FALSE, n_cores = NULL) {
+simulate_credit_process <- function(data, config, parallel = FALSE,
+                                    n_cores = NULL, show_progress = TRUE) {
   # Validate inputs
   validate_config(config)
 
@@ -34,7 +36,10 @@ simulate_credit_process <- function(data, config, parallel = FALSE, n_cores = NU
 
   # Start timing
   start_time <- Sys.time()
-  cli::cli_alert_info("Starting simulation with {length(config$score_columns)} score(s)")
+
+  if (show_progress) {
+    cli::cli_alert_info("Starting simulation with {length(config$score_columns)} score(s)")
+  }
 
   # Setup parallel processing if requested
   if (parallel) {
@@ -45,22 +50,37 @@ simulate_credit_process <- function(data, config, parallel = FALSE, n_cores = NU
     } else {
       n_cores <- n_cores %||% future::availableCores() - 1
       future::plan(future::multisession, workers = n_cores)
-      on.exit(future::plan(future::sequential))
+      on.exit(future::plan(future::sequential), add = TRUE)
     }
   }
 
   # Process each score
   if (parallel) {
+    # Ensure package is available in workers
     results <- furrr::future_map(
       config$score_columns,
       ~ evaluate_score(data, .x, config),
-      .options = furrr::furrr_options(seed = TRUE)
+      .options = furrr::furrr_options(
+        globals = TRUE,
+        packages = "creditSimulator",
+        seed = TRUE
+      ),
+      .progress = show_progress
     )
   } else {
-    results <- purrr::map(
-      config$score_columns,
-      ~ evaluate_score(data, .x, config)
-    )
+    # Sequential processing with optional progress bar
+    if (show_progress) {
+      results <- purrr::map(
+        config$score_columns,
+        ~ evaluate_score(data, .x, config),
+        .progress = show_progress
+      )
+    } else {
+      results <- purrr::map(
+        config$score_columns,
+        ~ evaluate_score(data, .x, config)
+      )
+    }
   }
 
   # Combine results
@@ -81,12 +101,14 @@ simulate_credit_process <- function(data, config, parallel = FALSE, n_cores = NU
   result_obj <- list(data = combined_results, metadata = metadata)
   class(result_obj) <- "credit_sim_results"
 
-  cli::cli_alert_success("Simulation completed in {round(metadata$run_time, 2)} seconds")
+  if (show_progress) {
+    cli::cli_alert_success("Simulation completed in {round(metadata$run_time, 2)} seconds")
+  }
 
   return(result_obj)
 }
 
-#' Evaluate a specific score
+#' Evaluate a specific score with eligibility enforcement
 #' @keywords internal
 evaluate_score <- function(data, score_col, config) {
   # Prepare column names
@@ -96,17 +118,24 @@ evaluate_score <- function(data, score_col, config) {
   data <- data %>%
     calculate_new_approval(score_col, col_names$new_approval)
 
-  # Apply all simulation stages
-  data <- purrr::reduce(
-    config$simulation_stages,
-    function(data, stage_config) {
-      apply_simulation_stage(data, stage_config, col_names$new_approval, score_col, config)
-    },
-    .init = data
-  )
+  # Apply all simulation stages with eligibility enforcement
+  current_approval_col <- col_names$new_approval
+
+  for (stage_config in config$simulation_stages) {
+    stage_name <- stage_config$name
+    stage_col <- paste0(stage_name, "_", score_col)
+
+    # Apply stage with eligibility from previous stage
+    data <- apply_simulation_stage(
+      data, stage_config, current_approval_col, stage_col, score_col, config
+    )
+
+    # Update current approval column for next stage
+    current_approval_col <- stage_col
+  }
 
   # Classify scenarios based on final approval
-  final_approval_col <- get_final_approval_col(config$simulation_stages, score_col)
+  final_approval_col <- current_approval_col
   data <- data %>%
     classify_scenarios(
       config$current_approval_col,
@@ -131,10 +160,7 @@ evaluate_score <- function(data, score_col, config) {
 
 #' Apply a simulation stage
 #' @keywords internal
-apply_simulation_stage <- function(data, stage_config, approval_col, score_col, config) {
-  stage_name <- stage_config$name
-  stage_col <- paste0(stage_name, "_", score_col)
-
+apply_simulation_stage <- function(data, stage_config, approval_col, stage_col, score_col, config) {
   switch(stage_config$type,
          "threshold" = apply_threshold_stage(data, stage_config, approval_col, stage_col, score_col),
          "random_removal" = apply_random_removal_stage(data, stage_config, approval_col, stage_col),
@@ -272,7 +298,7 @@ classify_scenarios <- function(data, current_approval_col, final_approval_col, s
     )
 }
 
-#' Simulate defaults
+#' Simulate defaults with configurable risk relationships
 #' @keywords internal
 simulate_defaults <- function(data, score_col, config, col_names) {
   # Calculate base rates by risk level from keep_ins
@@ -282,9 +308,19 @@ simulate_defaults <- function(data, score_col, config, col_names) {
     dplyr::summarise(
       base_rate = mean(.data[[config$actual_default_col]], na.rm = TRUE),
       .groups = "drop"
-    ) %>%
+    )
+
+  # Create aggravation factors dataframe from config
+  aggravation_df <- tibble::tibble(
+    risk_level = names(config$aggravation_factors),
+    aggravation_factor = unname(config$aggravation_factors)
+  )
+
+  # Join base rates with aggravation factors
+  base_rates <- base_rates %>%
+    dplyr::left_join(aggravation_df, by = setNames("risk_level", config$risk_level_col)) %>%
     dplyr::mutate(
-      aggravated_rate = base_rate * config$aggravation_factors[.data[[config$risk_level_col]]]
+      aggravated_rate = base_rate * aggravation_factor
     )
 
   # Join base rates with main data
@@ -292,18 +328,31 @@ simulate_defaults <- function(data, score_col, config, col_names) {
     dplyr::left_join(base_rates, by = config$risk_level_col)
 
   # Simulate default only for swap_ins and keep_ins
-  data %>%
+  result <- data %>%
     dplyr::mutate(
       !!col_names$simulated_default := dplyr::case_when(
         # Keep observed default for keep_ins
         .data[[col_names$scenario]] == "keep_in" ~ .data[[config$actual_default_col]],
 
         # Simulate default for swap_ins with aggravation
-        .data[[col_names$scenario]] == "swap_in" ~ as.integer(stats::runif(dplyr::n()) < .data$aggravated_rate),
+        .data[[col_names$scenario]] == "swap_in" ~ {
+          # Use the aggravated rate for simulation
+          as.integer(stats::runif(dplyr::n()) < .data$aggravated_rate)
+        },
 
         # NA for swap_out and keep_out (not approved)
         TRUE ~ NA_integer_
       )
-    ) %>%
-    dplyr::select(-base_rate, -aggravated_rate)
+    )
+
+  # Remove temporary columns if they exist
+  columns_to_remove <- c("base_rate", "aggravation_factor", "aggravated_rate")
+  columns_to_remove <- columns_to_remove[columns_to_remove %in% names(result)]
+
+  if (length(columns_to_remove) > 0) {
+    result <- result %>%
+      dplyr::select(-dplyr::all_of(columns_to_remove))
+  }
+
+  return(result)
 }

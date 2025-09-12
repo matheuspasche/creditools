@@ -1,94 +1,63 @@
-#' Generate efficient cutoff sequences based on score distribution
+#' Generate a sequence of cutoff values
 #'
-#' @param data Input data
-#' @param score_col Score column name
-#' @param n_steps Number of steps
-#' @param method Method for generating steps ("quantile", "linear", "optimal")
+#' @param min_cutoff Minimum cutoff value
+#' @param max_cutoff Maximum cutoff value
+#' @param n_points Number of points to generate
+#' @param method Method for generating sequence ("linear", "quantile", "optimal")
+#' @param data Optional data for quantile-based generation
+#' @param score_col Optional score column for quantile-based generation
 #'
 #' @return Sequence of cutoff values
 #' @export
-generate_efficient_cutoff_sequence <- function(data, score_col, n_steps = 10,
-                                               method = c("quantile", "linear", "optimal")) {
+generate_cutoff_sequence <- function(min_cutoff = 300, max_cutoff = 850,
+                                     n_points = 50, method = c("linear", "quantile", "optimal"),
+                                     data = NULL, score_col = NULL) {
+
   method <- match.arg(method)
-  score_values <- data[[score_col]]
+
+  if (method %in% c("quantile", "optimal") && (is.null(data) || is.null(score_col))) {
+    cli::cli_abort("Data and score_col are required for quantile and optimal methods")
+  }
 
   switch(method,
+         "linear" = {
+           seq(min_cutoff, max_cutoff, length.out = n_points)
+         },
          "quantile" = {
-           probs <- seq(0, 1, length.out = n_steps + 1)
+           score_values <- data[[score_col]]
+           probs <- seq(0, 1, length.out = n_points)
            stats::quantile(score_values, probs = probs, na.rm = TRUE) %>%
-             unique() %>%
              as.numeric()
          },
-         "linear" = {
-           min_val <- min(score_values, na.rm = TRUE)
-           max_val <- max(score_values, na.rm = TRUE)
-           seq(min_val, max_val, length.out = n_steps)
-         },
          "optimal" = {
+           score_values <- data[[score_col]]
            # Focus on regions where cutoffs are likely to matter
-           # Use percentiles around typical decision boundaries
-           probs <- c(0, 0.1, 0.25, 0.4, 0.5, 0.6, 0.75, 0.9, 1)
-           if (n_steps > 9) {
-             # Add more percentiles if needed
-             extra_probs <- seq(0, 1, length.out = n_steps - 8)
-             probs <- sort(c(probs, extra_probs))
-           }
+           probs <- seq(0.1, 0.9, length.out = n_points)
            stats::quantile(score_values, probs = probs, na.rm = TRUE) %>%
-             unique() %>%
              as.numeric()
          }
   )
 }
 
-#' Calculate required cutoff steps based on desired precision
+#' Calculate detailed decile statistics
 #'
-#' @param score_range Range of the score
-#' @param desired_precision Desired precision in score units
-#' @param max_steps Maximum number of steps to consider
+#' @param data Input data
+#' @param score_col Score column name
+#' @param default_col Default column name
 #'
-#' @return Number of steps needed
+#' @return Data frame with decile statistics
 #' @export
-calculate_required_steps <- function(score_range, desired_precision = 10, max_steps = 100) {
-  range_size <- diff(score_range)
-  required_steps <- ceiling(range_size / desired_precision)
-  min(required_steps, max_steps)
-}
-
-#' Estimate computation requirements for optimization
-#'
-#' @param config Simulation configuration
-#' @param cutoff_steps Number of cutoff steps per score
-#' @param sample_size Sample size for estimation
-#'
-#' @return List with computation estimates
-#' @export
-estimate_computation_requirements <- function(config, cutoff_steps, sample_size = 10000) {
-  n_scores <- length(config$score_columns)
-  n_combinations <- cutoff_steps ^ n_scores
-
-  # Estimate time per simulation (very rough estimate)
-  time_per_sim <- 0.1 * (sample_size / 10000)  # 0.1 seconds per 10,000 rows
-
-  total_time <- n_combinations * time_per_sim
-  total_time_human <- format_time(total_time)
-
-  list(
-    n_scores = n_scores,
-    n_combinations = n_combinations,
-    estimated_total_time_seconds = total_time,
-    estimated_total_time_human = total_time_human,
-    recommendation = ifelse(n_combinations > 1000, "Use parallel processing", "Sequential is fine")
-  )
-}
-
-#' Format time in human-readable format
-#' @keywords internal
-format_time <- function(seconds) {
-  if (seconds < 60) {
-    paste(round(seconds, 1), "seconds")
-  } else if (seconds < 3600) {
-    paste(round(seconds / 60, 1), "minutes")
-  } else {
-    paste(round(seconds / 3600, 1), "hours")
-  }
+calculate_decile_stats <- function(data, score_col, default_col = "observed_default") {
+  data %>%
+    dplyr::mutate(decile = dplyr::ntile(.data[[score_col]], 10)) %>%
+    dplyr::group_by(decile) %>%
+    dplyr::summarise(
+      min_score = min(.data[[score_col]], na.rm = TRUE),
+      max_score = max(.data[[score_col]], na.rm = TRUE),
+      avg_score = mean(.data[[score_col]], na.rm = TRUE),
+      default_rate = mean(.data[[default_col]], na.rm = TRUE),
+      n_observations = dplyr::n(),
+      .groups = "drop"
+    ) %>%
+    dplyr::arrange(decile)
 }

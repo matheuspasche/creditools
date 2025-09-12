@@ -4,7 +4,14 @@
 \alias{apply_simulation_stage}
 \title{Apply a simulation stage}
 \usage{
-apply_simulation_stage(data, stage_config, approval_col, score_col, config)
+apply_simulation_stage(
+  data,
+  stage_config,
+  approval_col,
+  stage_col,
+  score_col,
+  config
+)
 }
 \description{
 Apply a simulation stage

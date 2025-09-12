@@ -4,7 +4,13 @@
 \alias{simulate_credit_process}
 \title{Execute credit process simulation}
 \usage{
-simulate_credit_process(data, config, parallel = FALSE, n_cores = NULL)
+simulate_credit_process(
+  data,
+  config,
+  parallel = FALSE,
+  n_cores = NULL,
+  show_progress = TRUE
+)
 }
 \arguments{
 \item{data}{Input data}
@@ -14,6 +20,8 @@ simulate_credit_process(data, config, parallel = FALSE, n_cores = NULL)
 \item{parallel}{Whether to use parallel processing}
 
 \item{n_cores}{Number of cores for parallel processing}
+
+\item{show_progress}{Whether to show progress bar}
 }
 \value{
 Simulation results

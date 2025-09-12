@@ -7,7 +7,7 @@
 \title{Credit Decision Simulation System}
 \description{
 A comprehensive system for simulating credit decision processes with
-multiple scores, stages, and optimization capabilities.
+multiple scores, stages, and trade-off analysis capabilities.
 }
 \details{
 The package provides functionality to:
@@ -15,8 +15,7 @@ The package provides functionality to:
 \item Compare existing credit decisions with new decision rules
 \item Simulate multiple decision stages (credit, anti-fraud, conversion)
 \item Analyze trade-offs between approval and default rates
-\item Find optimal cutoffs for credit scores
-\item Handle large datasets efficiently
+\item Visualize the relationship between cutoffs, approval rates, and default rates
 }
 }
 \author{

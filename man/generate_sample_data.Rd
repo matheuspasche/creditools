@@ -2,7 +2,7 @@
 % Please edit documentation in R/sample_data.R
 \name{generate_sample_data}
 \alias{generate_sample_data}
-\title{Generate sample data with realistic business logic}
+\title{Generate realistic sample data for credit simulation}
 \usage{
 generate_sample_data(n_samples = 10000, seed = 123)
 }
@@ -15,5 +15,5 @@ generate_sample_data(n_samples = 10000, seed = 123)
 Data frame with sample data
 }
 \description{
-Generate sample data with realistic business logic
+Generate realistic sample data for credit simulation
 }
