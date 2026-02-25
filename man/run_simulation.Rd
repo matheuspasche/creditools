@@ -14,8 +14,9 @@ specified in the \code{credit_policy} object.}
 a list of stages created by \code{stage_cutoff()} or \code{stage_rate()}.}
 }
 \value{
-A data frame with the simulation results, including new approval
-decisions for each stage, final scenario classification, and simulated defaults.
+A \code{credit_sim_results} object, which is a list containing the
+simulation \verb{$data} (a data frame) and \verb{$metadata} (a list with the policy
+object used in the simulation).
 }
 \description{
 This is the main entry point for running a multi-stage simulation. It takes

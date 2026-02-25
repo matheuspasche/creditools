@@ -10,8 +10,9 @@
 #' @param policy A `credit_policy` object created by `credit_policy()`, with
 #'   a list of stages created by `stage_cutoff()` or `stage_rate()`.
 #'
-#' @return A data frame with the simulation results, including new approval
-#'   decisions for each stage, final scenario classification, and simulated defaults.
+#' @return A `credit_sim_results` object, which is a list containing the
+#'   simulation `$data` (a data frame) and `$metadata` (a list with the policy
+#'   object used in the simulation).
 #' @export
 run_simulation <- function(data, policy) {
   validate_simulation_inputs(data, policy)
@@ -30,7 +31,7 @@ run_simulation <- function(data, policy) {
       is_eligible <- rep(TRUE, nrow(data))
     } else {
       # Get the logical vectors for all previous stages, handling NAs
-      prev_approvals <- purrr::map(data[stage_approval_cols[1:(i-1)]], function(col) col == 1 & !is.na(col))
+      prev_approvals <- purrr::map(data[unlist(stage_approval_cols[1:(i-1)])], function(col) col == 1 & !is.na(col))
       is_eligible <- Reduce(`&`, prev_approvals)
     }
 
@@ -42,7 +43,7 @@ run_simulation <- function(data, policy) {
   }
 
   # Determine final approval status under the new policy
-  final_approval_flags <- purrr::map(data[stage_approval_cols], function(col) col == 1 & !is.na(col))
+  final_approval_flags <- purrr::map(data[unlist(stage_approval_cols)], function(col) col == 1 & !is.na(col))
   data$new_approval <- Reduce(`&`, final_approval_flags)
 
   # Classify scenarios based on old vs. new final approval
@@ -53,13 +54,25 @@ run_simulation <- function(data, policy) {
 
   cli::cli_alert_success("Multi-stage simulation completed for {nrow(data)} applicants.")
 
-  return(data)
+  # Structure the output
+  results <- structure(
+    list(
+      data = data,
+      metadata = list(
+        policy = policy,
+        timestamp = Sys.time()
+      )
+    ),
+    class = "credit_sim_results"
+  )
+
+  return(results)
 }
 
 #' Generic function to simulate a single stage
 #' @keywords internal
 simulate_stage <- function(data, stage, policy) {
-  UseMethod("simulate_stage")
+  UseMethod("simulate_stage", stage)
 }
 
 #' Simulate a cutoff-based stage
@@ -234,7 +247,7 @@ simulate_swap_in_defaults <- function(data, policy) {
 #' Calculate default probability based on aggravation
 #' @keywords internal
 calc_prob_aggravation <- function(data, policy, scenario) {
-  group_vars <- scenario$by %||% policy$risk_level_col
+  group_vars <- rlang::`%||%`(scenario$by, policy$risk_level_col)
 
   # Baseline should be calculated on the original approved population
   keep_ins <- data[data$scenario == "keep_in" & !is.na(data$scenario), ]

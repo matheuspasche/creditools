@@ -5,38 +5,66 @@
 \title{Generate realistic sample data for credit simulation}
 \usage{
 generate_sample_data(
-  n_applicants = 10000,
-  n_scores = 3,
-  base_approval_rate = 0.6,
-  base_default_rate = 0.08,
+  n_applicants = 20000,
+  correlation = 0.7,
+  churn_rate = 1,
+  base_default_rate = 0.1,
+  base_approval_rate = 0.5,
+  default_rate_dispersion = 0.4,
+  min_conversion_rate = 0.4,
+  max_conversion_rate = 0.8,
   seed = NULL
 )
 }
 \arguments{
 \item{n_applicants}{Number of applicants to generate.}
 
-\item{n_scores}{Number of different score columns to create.}
+\item{correlation}{The desired correlation between the old and new scores.
+Must be between 0 and 1.}
 
-\item{base_approval_rate}{The approximate approval rate of the historical policy.}
+\item{churn_rate}{A factor controlling the amount of rank migration. Higher
+values mean more customers change risk buckets between scores. A value of
+0 means the scores have a perfect rank correlation. A value of 1 gives
+a moderate amount of churn.}
 
-\item{base_default_rate}{The approximate default rate for the approved population.}
+\item{base_default_rate}{The approximate overall default rate in the population.}
+
+\item{base_approval_rate}{The historical approval rate based on the old score.}
 
 \item{seed}{A random seed for reproducibility.}
+
+\item{base_hire_rate}{The historical hire rate for approved applicants.}
 }
 \value{
-A tibble with the generated sample data.
+A tibble with the generated sample data, including IDs, scores,
+historical policy outcomes, and the true default status.
 }
 \description{
-Creates a large, realistic dataset for testing and validating the credit
-simulation package. It includes multiple correlated scores, a latent "true risk"
-variable to make defaults logical, and columns for a historical policy.
+Creates a large, realistic dataset for simulating credit policy changes.
+This function generates two scores (\code{score_antigo} and \code{score_novo}) with a
+controllable correlation structure and realistic rank migration (i.e., churn
+in risk deciles).
+
+The generation process is based on a latent variable model:
+\enumerate{
+\item A "true risk" latent variable \code{z} is generated.
+\item Each score is a combination of this true risk and an idiosyncratic noise component.
+\item The \code{defaulted} outcome is a probabilistic function of the true risk \code{z}.
+This ensures that the scores are predictive and the default rates are logical.
+}
 }
 \examples{
-# Generate a small sample for exploration
-sample_df <- generate_sample_data(n_applicants = 1000)
+# Generate a sample with high correlation and moderate churn
+analytical_base <- generate_sample_data(
+  n_applicants = 10000,
+  correlation = 0.8,
+  churn_rate = 1,
+  seed = 42
+)
 
-# Generate a large sample for stress testing
-\dontrun{
-  large_sample <- generate_sample_data(n_applicants = 100000, seed = 42)
-}
+# Check the migration
+table(
+  ntile(analytical_base$score_antigo, 10),
+  ntile(analytical_base$score_novo, 10)
+)
 }

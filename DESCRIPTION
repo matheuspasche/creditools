@@ -27,11 +27,14 @@ Imports:
     magrittr (>= 2.0.0),
     ggplot2 (>= 3.3.0)
 Suggests:
-    testthat (>= 3.0.0),
-    knitr,
-    rmarkdown,
-    usethis,
+    devtools,
     future,
-    furrr
+    furrr,
+    knitr,
+    readr,
+    rmarkdown,
+    testthat (>= 3.0.0),
+    usethis,
+    writexl
 Config/testthat/edition: 3
 RoxygenNote: 7.2.1

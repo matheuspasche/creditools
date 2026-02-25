@@ -7,13 +7,17 @@
 summarize_results(results, by = NULL)
 }
 \arguments{
-\item{results}{Simulation results}
+\item{results}{A \code{credit_sim_results} object returned by \code{run_simulation()}.}
 
-\item{by}{Grouping variables}
+\item{by}{A character vector of column names to group the summary by, in
+addition to the default grouping by \code{scenario}.}
 }
 \value{
-Data frame with summary statistics
+A data frame (tibble) with summary statistics, including columns
+for the grouping variables, \code{scenario}, \code{volume}, \code{total_approved},
+\code{overall_approval_rate}, and \code{avg_default_rate_approved}.
 }
 \description{
-Summarize simulation results
+Calculates summary metrics from a \code{credit_sim_results} object, such as
+volume and default rates, grouped by scenario and other optional variables.
 }

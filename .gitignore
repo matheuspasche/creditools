@@ -2,3 +2,13 @@
 .Rhistory
 .RData
 .Ruserdata
+
+# Generated files
+Rplots.pdf
+*.xlsx
+
+# Ignore analysis outputs
+/analysis/
+
+# LLM workflow
+/llm/
