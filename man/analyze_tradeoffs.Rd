@@ -4,15 +4,14 @@
 \alias{analyze_tradeoffs}
 \title{Analyze trade-offs between approval and default rates}
 \usage{
-analyze_tradeoffs(opt_results, by_score = FALSE)
+analyze_tradeoffs(opt_results)
 }
 \arguments{
-\item{opt_results}{Optimization results from find_optimal_cutoffs}
-
-\item{by_score}{Whether to analyze trade-offs by individual score}
+\item{opt_results}{Optimization results from \code{find_optimal_cutoffs}.}
 }
 \value{
-List with trade-off analysis results
+A list containing the overall analysis, the Pareto frontier, and
+the optimal result.
 }
 \description{
 Analyze trade-offs between approval and default rates

@@ -2,16 +2,11 @@
 % Please edit documentation in R/simulation.R
 \name{classify_scenarios}
 \alias{classify_scenarios}
-\title{Classify scenarios}
+\title{Classify scenarios based on current and new approval decisions}
 \usage{
-classify_scenarios(
-  data,
-  current_approval_col,
-  final_approval_col,
-  scenario_col
-)
+classify_scenarios(data, policy, new_approval_col)
 }
 \description{
-Classify scenarios
+Classify scenarios based on current and new approval decisions
 }
 \keyword{internal}

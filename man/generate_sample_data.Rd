@@ -2,18 +2,41 @@
 % Please edit documentation in R/sample_data.R
 \name{generate_sample_data}
 \alias{generate_sample_data}
-\title{Generate sample data with realistic business logic}
+\title{Generate realistic sample data for credit simulation}
 \usage{
-generate_sample_data(n_samples = 10000, seed = 123)
+generate_sample_data(
+  n_applicants = 10000,
+  n_scores = 3,
+  base_approval_rate = 0.6,
+  base_default_rate = 0.08,
+  seed = NULL
+)
 }
 \arguments{
-\item{n_samples}{Number of samples}
+\item{n_applicants}{Number of applicants to generate.}
 
-\item{seed}{Seed for reproducibility}
+\item{n_scores}{Number of different score columns to create.}
+
+\item{base_approval_rate}{The approximate approval rate of the historical policy.}
+
+\item{base_default_rate}{The approximate default rate for the approved population.}
+
+\item{seed}{A random seed for reproducibility.}
 }
 \value{
-Data frame with sample data
+A tibble with the generated sample data.
 }
 \description{
-Generate sample data with realistic business logic
+Creates a large, realistic dataset for testing and validating the credit
+simulation package. It includes multiple correlated scores, a latent "true risk"
+variable to make defaults logical, and columns for a historical policy.
+}
+\examples{
+# Generate a small sample for exploration
+sample_df <- generate_sample_data(n_applicants = 1000)
+
+# Generate a large sample for stress testing
+\dontrun{
+  large_sample <- generate_sample_data(n_applicants = 100000, seed = 42)
+}
 }

@@ -1,61 +1,80 @@
-#' Generate sample data with realistic business logic
+#' Generate realistic sample data for credit simulation
 #'
-#' @param n_samples Number of samples
-#' @param seed Seed for reproducibility
+#' @description
+#' Creates a large, realistic dataset for testing and validating the credit
+#' simulation package. It includes multiple correlated scores, a latent "true risk"
+#' variable to make defaults logical, and columns for a historical policy.
 #'
-#' @return Data frame with sample data
+#' @param n_applicants Number of applicants to generate.
+#' @param n_scores Number of different score columns to create.
+#' @param base_approval_rate The approximate approval rate of the historical policy.
+#' @param base_default_rate The approximate default rate for the approved population.
+#' @param seed A random seed for reproducibility.
+#'
+#' @return A tibble with the generated sample data.
 #' @export
-generate_sample_data <- function(n_samples = 10000, seed = 123) {
-  set.seed(seed)
-
-  data <- tibble::tibble(
-    applicant_id = 1:n_samples,
-    current_approval = sample(c(0, 1), n_samples, replace = TRUE, prob = c(0.4, 0.6)),
-    observed_default = NA_integer_,
-    risk_level = sample(c("Low_Risk", "Medium_Risk", "High_Risk"), n_samples,
-                        replace = TRUE, prob = c(0.6, 0.3, 0.1)),
-    income = pmax(round(rnorm(n_samples, mean = 5000, sd = 2000)), 1000)
+#'
+#' @examples
+#' # Generate a small sample for exploration
+#' sample_df <- generate_sample_data(n_applicants = 1000)
+#'
+#' # Generate a large sample for stress testing
+#' \dontrun{
+#'   large_sample <- generate_sample_data(n_applicants = 100000, seed = 42)
+#' }
+generate_sample_data <- function(n_applicants = 10000,
+                                 n_scores = 3,
+                                 base_approval_rate = 0.6,
+                                 base_default_rate = 0.08,
+                                 seed = NULL) {
+  
+  if (!is.null(seed)) {
+    set.seed(seed)
+  }
+  
+  cli::cli_alert_info("Generating {n_applicants} applicants with {n_scores} scores...")
+  
+  # 1. Create a latent "true risk" variable. This is the unobservable truth.
+  # A lower value means higher risk.
+  true_risk <- stats::rbeta(n_applicants, shape1 = 2, shape2 = 5)
+  
+  # 2. Generate scores that are correlated with the true risk
+  score_list <- purrr::map(1:n_scores, function(i) {
+    # Add some noise to each score
+    noise <- stats::rnorm(n_applicants, mean = 0, sd = 0.1)
+    # Scale true_risk to a typical score range (e.g., 300-850)
+    score <- 300 + (1 - (true_risk + noise)) * 550
+    # Ensure scores are within a reasonable range
+    score <- pmin(pmax(score, 300), 850)
+    return(score)
+  })
+  names(score_list) <- paste0("score_v", 1:n_scores)
+  
+  # 3. Create the main data frame
+  df <- tibble::tibble(
+    id = 1:n_applicants,
+    .rows = n_applicants
   )
-
-  # Generate scores with different distributions by risk level
-  data <- data %>%
-    dplyr::mutate(
-      score_1 = dplyr::case_when(
-        risk_level == "Low_Risk" ~ pmin(pmax(rnorm(dplyr::n(), mean = 700, sd = 50), 300), 850),
-        risk_level == "Medium_Risk" ~ pmin(pmax(rnorm(dplyr::n(), mean = 650, sd = 70), 300), 850),
-        risk_level == "High_Risk" ~ pmin(pmax(rnorm(dplyr::n(), mean = 600, sd = 90), 300), 850)
-      ),
-      score_2 = dplyr::case_when(
-        risk_level == "Low_Risk" ~ pmin(pmax(rnorm(dplyr::n(), mean = 720, sd = 40), 300), 850),
-        risk_level == "Medium_Risk" ~ pmin(pmax(rnorm(dplyr::n(), mean = 670, sd = 60), 300), 850),
-        risk_level == "High_Risk" ~ pmin(pmax(rnorm(dplyr::n(), mean = 620, sd = 80), 300), 850)
-      ),
-      score_1_min = 650,  # Cutoff for score 1
-      score_2_min = 680,  # Cutoff for score 2
-      # Add historical conversion and anti-fraud rates for keep_in-based simulation
-      historical_conversion = dplyr::case_when(
-        risk_level == "Low_Risk" ~ 0.8,
-        risk_level == "Medium_Risk" ~ 0.7,
-        risk_level == "High_Risk" ~ 0.6
-      ),
-      historical_anti_fraud = dplyr::case_when(
-        risk_level == "Low_Risk" ~ 0.95,
-        risk_level == "Medium_Risk" ~ 0.9,
-        risk_level == "High_Risk" ~ 0.85
-      )
-    )
-
-  # Simulate observed default only for approved applicants
-  approved_mask <- data$current_approval == 1
-  data$observed_default[approved_mask] <- as.integer(
-    stats::runif(sum(approved_mask)) < dplyr::case_when(
-      data$risk_level[approved_mask] == "Low_Risk" ~ 0.02,
-      data$risk_level[approved_mask] == "Medium_Risk" ~ 0.05,
-      data$risk_level[approved_mask] == "High_Risk" ~ 0.10
-    )
+  df <- dplyr::bind_cols(df, tibble::as_tibble(score_list))
+  
+  # 4. Create the historical approval decision based on the first score
+  cutoff_score <- stats::quantile(df$score_v1, 1 - base_approval_rate)
+  df$approved <- as.integer(df$score_v1 >= cutoff_score)
+  
+  # 5. Generate default outcomes, which depend on true risk
+  # The probability of default is inversely related to true_risk
+  default_prob <- (1 - true_risk) * (base_default_rate / (1 - mean(true_risk)))
+  df$defaulted <- NA_integer_
+  
+  approved_indices <- which(df$approved == 1)
+  df$defaulted[approved_indices] <- as.integer(
+    stats::runif(length(approved_indices)) < default_prob[approved_indices]
   )
-
-
-
-  return(data)
+  
+  # 6. Add a risk stratification column based on score_v1 deciles
+  df$risk_decile <- factor(dplyr::ntile(df$score_v1, 10))
+  
+  cli::cli_alert_success("Sample data generated successfully.")
+  
+  return(df)
 }

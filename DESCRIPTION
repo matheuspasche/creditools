@@ -1,10 +1,16 @@
-Package: creditSimulator
-Title: Credit Decision Simulation System
-Version: 1.0.0
+Package: creditools
+Title: Credit Policy Simulation and Optimization Tools
+Version: 0.1.0
 Authors@R: 
     person("Analyst", "Credit", email = "analyst@example.com", role = c("aut", "cre"))
-Description: A flexible system for simulating credit decision processes with
-    multiple scores, stages, and optimization capabilities.
+Description: A toolkit for forward-looking credit risk analysis. 'creditools'
+    allows risk analysts to simulate the impact of changing credit policies by
+    modeling outcomes for previously rejected applicants ('swap-ins'). It provides
+    a framework for defining stress scenarios based on risk aggravation or
+    monotonic score-to-risk assumptions, enabling robust estimation of approval
+    rates, and potential losses under new cutoff strategies. The package also
+    includes functions to analyze the trade-offs and optimize score cutoffs
+    to find the efficient frontier between business and risk metrics.
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
@@ -17,7 +23,9 @@ Imports:
     stats (>= 4.0.0),
     tibble (>= 3.0.0),
     tidyr (>= 1.1.0),
-    stringr (>= 1.4.0)
+    stringr (>= 1.4.0),
+    magrittr (>= 2.0.0),
+    ggplot2 (>= 3.3.0)
 Suggests:
     testthat (>= 3.0.0),
     knitr,

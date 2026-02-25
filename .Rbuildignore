@@ -1,2 +1,8 @@
 ^creditools\.Rproj$
 ^\.Rproj\.user$
+^LICENSE\.md$
+^llm$
+^run_custom_simulation\.R$
+^tempCodeRunnerFile\.R$
+^analytical_base\.csv$
+^tradeoff_plot\.png$

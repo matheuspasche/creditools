@@ -2,7 +2,7 @@
 % Please edit documentation in R/optimization.R
 \name{find_optimal_cutoffs}
 \alias{find_optimal_cutoffs}
-\title{Find optimal cutoffs for multiple scores}
+\title{Find optimal cutoffs for a credit policy stage}
 \usage{
 find_optimal_cutoffs(
   data,
@@ -15,23 +15,37 @@ find_optimal_cutoffs(
 )
 }
 \arguments{
-\item{data}{Input data}
+\item{data}{A data frame containing applicant data.}
 
-\item{config}{Simulation configuration}
+\item{config}{A base \code{credit_policy} object. The optimization will add a
+\code{stage_cutoff} to this policy for each iteration.}
 
-\item{cutoff_steps}{Step size for cutoff exploration}
+\item{cutoff_steps}{The number of steps to create for each score's cutoff range.
+The range is from the min to the max score in the data.}
 
-\item{target_default_rate}{Maximum acceptable default rate}
+\item{target_default_rate}{The maximum acceptable overall default rate for the approved population.}
 
-\item{min_approval_rate}{Minimum acceptable approval rate}
+\item{min_approval_rate}{The minimum acceptable overall approval rate.}
 
-\item{parallel}{Whether to use parallel processing}
+\item{parallel}{A logical flag indicating whether to use parallel processing.
+Requires the \code{future} and \code{furrr} packages.}
 
-\item{n_cores}{Number of cores for parallel processing}
+\item{n_cores}{The number of cores to use for parallel processing. Defaults to
+all available cores minus one.}
 }
 \value{
-Data frame with optimal cutoffs and metrics
+A data frame with the single best combination of cutoffs found, along
+with its performance metrics. The full evaluation results are available in
+the \code{evaluation_results} attribute of the returned object.
 }
 \description{
-Find optimal cutoffs for multiple scores
+This function systematically evaluates a grid of cutoff combinations for a set
+of scores to find the optimal set of cutoffs that maximizes a trade-off
+score while respecting given constraints on default and approval rates.
+}
+\details{
+The optimization works by modifying a base \code{credit_policy} object. For each
+combination of cutoffs, it creates a new \code{stage_cutoff} and inserts it as the
+first stage of the simulation funnel. It then runs the full multi-stage
+simulation and evaluates the final metrics.
 }

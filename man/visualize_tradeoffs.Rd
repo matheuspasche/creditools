@@ -7,12 +7,13 @@
 visualize_tradeoffs(analysis_results, type = "tradeoff")
 }
 \arguments{
-\item{analysis_results}{Trade-off analysis results}
+\item{analysis_results}{Trade-off analysis results from \code{analyze_tradeoffs}.}
 
-\item{type}{Type of visualization ("tradeoff", "pareto", "by_score")}
+\item{type}{The type of plot to generate: "tradeoff" for a scatter plot of
+all evaluated points, or "pareto" for the efficient frontier.}
 }
 \value{
-ggplot object
+A \code{ggplot} object.
 }
 \description{
 Visualize trade-off analysis

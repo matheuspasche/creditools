@@ -1,309 +1,282 @@
-#' Execute credit process simulation
+#' Run a credit policy simulation with multiple stages
 #'
-#' @param data Input data
-#' @param config Simulation configuration
-#' @param parallel Whether to use parallel processing
-#' @param n_cores Number of cores for parallel processing
+#' @description
+#' This is the main entry point for running a multi-stage simulation. It takes
+#' a dataset and a `credit_policy` object, then applies the defined sequential
+#' stages in the policy to simulate new approval decisions and their outcomes.
 #'
-#' @return Simulation results
+#' @param data A data frame containing applicant data. Must include columns
+#'   specified in the `credit_policy` object.
+#' @param policy A `credit_policy` object created by `credit_policy()`, with
+#'   a list of stages created by `stage_cutoff()` or `stage_rate()`.
+#'
+#' @return A data frame with the simulation results, including new approval
+#'   decisions for each stage, final scenario classification, and simulated defaults.
 #' @export
-simulate_credit_process <- function(data, config, parallel = FALSE, n_cores = NULL) {
-  # Validate inputs
-  validate_config(config)
+run_simulation <- function(data, policy) {
+  validate_simulation_inputs(data, policy)
 
-  if (!is.data.frame(data)) {
-    cli::cli_abort("{.arg data} must be a data frame")
-  }
+  # This will hold the logical vector of approvals at each stage
+  stage_approval_cols <- list()
 
-  # Check for required columns
-  required_cols <- c(
-    config$current_approval_col,
-    config$actual_default_col,
-    config$risk_level_col,
-    config$score_columns
-  )
+  # Sequentially process each stage in the funnel
+  for (i in seq_along(policy$simulation_stages)) {
+    stage <- policy$simulation_stages[[i]]
+    stage_output_col <- paste0("approved_", stage$name, "_new")
+    stage_approval_cols[[i]] <- stage_output_col
 
-  # Add cutoff columns if needed
-  cutoff_cols <- paste0(config$score_columns, "_min")
-  required_cols <- c(required_cols, cutoff_cols)
-
-  missing_cols <- setdiff(required_cols, names(data))
-  if (length(missing_cols) > 0) {
-    cli::cli_abort("Missing required columns in data: {missing_cols}")
-  }
-
-  # Start timing
-  start_time <- Sys.time()
-  cli::cli_alert_info("Starting simulation with {length(config$score_columns)} score(s)")
-
-  # Setup parallel processing if requested
-  if (parallel) {
-    if (!requireNamespace("future", quietly = TRUE) ||
-        !requireNamespace("furrr", quietly = TRUE)) {
-      cli::cli_alert_warning("Parallel processing requires future and furrr packages. Using sequential processing.")
-      parallel <- FALSE
+    # Eligibility for the current stage is passing all *previous* new stages
+    if (i == 1) {
+      is_eligible <- rep(TRUE, nrow(data))
     } else {
-      n_cores <- n_cores %||% future::availableCores() - 1
-      future::plan(future::multisession, workers = n_cores)
-      on.exit(future::plan(future::sequential))
+      # Get the logical vectors for all previous stages, handling NAs
+      prev_approvals <- purrr::map(data[stage_approval_cols[1:(i-1)]], function(col) col == 1 & !is.na(col))
+      is_eligible <- Reduce(`&`, prev_approvals)
+    }
+
+    # Simulate the current stage ONLY for the eligible population
+    data[[stage_output_col]] <- NA_integer_
+    if (any(is_eligible)) {
+       data[is_eligible, stage_output_col] <- simulate_stage(data[is_eligible, ], stage, policy)
     }
   }
 
-  # Process each score
-  if (parallel) {
-    results <- furrr::future_map(
-      config$score_columns,
-      ~ evaluate_score(data, .x, config),
-      .options = furrr::furrr_options(seed = TRUE)
-    )
-  } else {
-    results <- purrr::map(
-      config$score_columns,
-      ~ evaluate_score(data, .x, config)
-    )
-  }
+  # Determine final approval status under the new policy
+  final_approval_flags <- purrr::map(data[stage_approval_cols], function(col) col == 1 & !is.na(col))
+  data$new_approval <- Reduce(`&`, final_approval_flags)
 
-  # Combine results
-  combined_results <- purrr::reduce(
-    results,
-    ~ dplyr::left_join(.x, .y, by = config$applicant_id_col),
-    .init = data
-  )
+  # Classify scenarios based on old vs. new final approval
+  data <- classify_scenarios(data, policy, "new_approval")
 
-  # Add metadata
-  metadata <- list(
-    run_time = Sys.time() - start_time,
-    n_applicants = nrow(data),
-    n_scores = length(config$score_columns),
-    config = config
-  )
+  # Assign default outcomes for the newly approved population
+  data <- assign_simulated_defaults(data, policy)
 
-  result_obj <- list(data = combined_results, metadata = metadata)
-  class(result_obj) <- "credit_sim_results"
-
-  cli::cli_alert_success("Simulation completed in {round(metadata$run_time, 2)} seconds")
-
-  return(result_obj)
-}
-
-#' Evaluate a specific score
-#' @keywords internal
-evaluate_score <- function(data, score_col, config) {
-  # Prepare column names
-  col_names <- prepare_column_names(score_col)
-
-  # Calculate approval by new score
-  data <- data %>%
-    calculate_new_approval(score_col, col_names$new_approval)
-
-  # Apply all simulation stages
-  data <- purrr::reduce(
-    config$simulation_stages,
-    function(data, stage_config) {
-      apply_simulation_stage(data, stage_config, col_names$new_approval, score_col, config)
-    },
-    .init = data
-  )
-
-  # Classify scenarios based on final approval
-  final_approval_col <- get_final_approval_col(config$simulation_stages, score_col)
-  data <- data %>%
-    classify_scenarios(
-      config$current_approval_col,
-      final_approval_col,
-      col_names$scenario
-    )
-
-  # Calculate simulated defaults
-  data <- data %>%
-    simulate_defaults(score_col, config, col_names)
-
-  # Select only relevant columns
-  data %>%
-    dplyr::select(
-      dplyr::all_of(config$applicant_id_col),
-      dplyr::all_of(col_names$new_approval),
-      dplyr::all_of(get_stage_cols(config$simulation_stages, score_col)),
-      dplyr::all_of(col_names$scenario),
-      dplyr::all_of(col_names$simulated_default)
-    )
-}
-
-#' Apply a simulation stage
-#' @keywords internal
-apply_simulation_stage <- function(data, stage_config, approval_col, score_col, config) {
-  stage_name <- stage_config$name
-  stage_col <- paste0(stage_name, "_", score_col)
-
-  switch(stage_config$type,
-         "threshold" = apply_threshold_stage(data, stage_config, approval_col, stage_col, score_col),
-         "random_removal" = apply_random_removal_stage(data, stage_config, approval_col, stage_col),
-         "keep_in_based" = apply_keep_in_based_stage(data, stage_config, approval_col, stage_col, config, score_col),
-         "variable_based" = apply_variable_based_stage(data, stage_config, approval_col, stage_col),
-         cli::cli_abort("Unknown simulation stage type: {stage_config$type}")
-  )
-}
-
-#' Apply threshold-based simulation stage
-#' @keywords internal
-apply_threshold_stage <- function(data, stage_config, approval_col, stage_col, score_col) {
-  cutoff_col <- paste0(score_col, "_min")
-
-  data %>%
-    dplyr::mutate(
-      !!stage_col := as.integer(.data[[approval_col]] == 1 &
-                                  .data[[score_col]] >= .data[[cutoff_col]])
-    )
-}
-
-#' Apply random removal simulation stage
-#' @keywords internal
-apply_random_removal_stage <- function(data, stage_config, approval_col, stage_col) {
-  data %>%
-    dplyr::mutate(
-      !!stage_col := dplyr::case_when(
-        .data[[approval_col]] == 0 ~ 0L,
-        .data[[approval_col]] == 1 ~ as.integer(stats::runif(dplyr::n()) < stage_config$approval_rate),
-        TRUE ~ NA_integer_
-      )
-    )
-}
-
-#' Apply keep_in-based simulation stage
-#' @keywords internal
-apply_keep_in_based_stage <- function(data, stage_config, approval_col, stage_col, config, score_col) {
-  # Calculate rates from keep_ins
-  if (is.null(stage_config$grouping_vars)) {
-    stage_config$grouping_vars <- config$risk_level_col
-  }
-
-  # Use the current score's approval for reference if not specified
-  if (is.null(stage_config$reference_column)) {
-    stage_config$reference_column <- paste0("approval_", score_col)
-  }
-
-  keep_in_rates <- data %>%
-    dplyr::filter(.data[[config$current_approval_col]] == 1) %>%
-    dplyr::group_by(dplyr::across(dplyr::all_of(stage_config$grouping_vars))) %>%
-    dplyr::summarise(
-      keep_in_rate = mean(.data[[stage_config$reference_column]], na.rm = TRUE),
-      .groups = "drop"
-    )
-
-  # Apply rates with optional aggravation
-  data <- data %>%
-    dplyr::left_join(keep_in_rates, by = stage_config$grouping_vars) %>%
-    dplyr::mutate(
-      aggravated_rate = keep_in_rate * (stage_config$aggravation_factor %||% 1),
-      !!stage_col := dplyr::case_when(
-        .data[[approval_col]] == 0 ~ 0L,
-        .data[[approval_col]] == 1 ~ as.integer(stats::runif(dplyr::n()) < aggravated_rate),
-        TRUE ~ NA_integer_
-      )
-    ) %>%
-    dplyr::select(-keep_in_rate, -aggravated_rate)
+  cli::cli_alert_success("Multi-stage simulation completed for {nrow(data)} applicants.")
 
   return(data)
 }
 
-#' Apply variable-based simulation stage
+#' Generic function to simulate a single stage
 #' @keywords internal
-apply_variable_based_stage <- function(data, stage_config, approval_col, stage_col) {
-  data %>%
-    dplyr::mutate(
-      !!stage_col := dplyr::case_when(
-        .data[[approval_col]] == 0 ~ 0L,
-        .data[[approval_col]] == 1 ~ as.integer(.data[[stage_config$variable]] >= stage_config$threshold),
-        TRUE ~ NA_integer_
-      )
-    )
+simulate_stage <- function(data, stage, policy) {
+  UseMethod("simulate_stage")
 }
 
-#' Get final approval column name
+#' Simulate a cutoff-based stage
 #' @keywords internal
-get_final_approval_col <- function(simulation_stages, score_col) {
-  if (length(simulation_stages) == 0) {
-    return(paste0("approval_", score_col))
+simulate_stage.stage_cutoff <- function(data, stage, policy) {
+  # Create a matrix of approval decisions for each score in this stage
+  approval_matrix <- purrr::map_dfc(names(stage$cutoffs), function(score_col) {
+    data[[score_col]] >= stage$cutoffs[[score_col]]
+  })
+
+  # Applicant passes if they meet ALL cutoffs in the stage
+  as.integer(apply(approval_matrix, 1, all))
+}
+
+#' Simulate a rate-based stage (e.g., conversion)
+#' @keywords internal
+simulate_stage.stage_rate <- function(data, stage, policy) {
+
+  # Default to an empty vector of results
+  stage_outcome <- integer(nrow(data))
+
+  # If there's an observed outcome column, use it for "keep-ins" at this stage
+  if (!is.null(stage$observed_outcome_col)) {
+    # A "keep-in" for this stage is someone who was approved in the original policy
+    # AND had a positive outcome observed for this specific stage.
+    is_original_approved <- data[[policy$current_approval_col]] == 1
+    has_observed_outcome <- data[[stage$observed_outcome_col]] == 1
+
+    keep_in_idx <- which(is_original_approved & has_observed_outcome)
+
+    if(length(keep_in_idx) > 0) {
+      stage_outcome[keep_in_idx] <- 1
+    }
+
+    # "Swap-ins" for this stage are everyone else who is eligible
+    swap_in_idx <- which(!(is_original_approved & has_observed_outcome))
+  } else {
+    # If no observed data, everyone is a "swap-in" for this stage
+    swap_in_idx <- seq_len(nrow(data))
   }
 
-  last_stage <- simulation_stages[[length(simulation_stages)]]
-  paste0(last_stage$name, "_", score_col)
+  if (length(swap_in_idx) == 0) {
+    return(stage_outcome)
+  }
+
+  swap_ins_data <- data[swap_in_idx, ]
+
+  # Calculate the probability of a positive outcome for swap-ins
+  if (!is.null(stage$stress_by_score)) {
+    # Use monotonic stress logic if provided
+    prob <- calc_prob_monotonic(
+      swap_ins_data,
+      stage$stress_by_score$score_col,
+      stage$stress_by_score
+    )
+  } else {
+    # Otherwise, use the flat base rate
+    prob <- stage$base_rate
+  }
+
+  # Simulate the outcome for swap-ins
+  simulated_outcome <- as.integer(stats::runif(nrow(swap_ins_data)) < prob)
+  stage_outcome[swap_in_idx] <- simulated_outcome
+
+  return(stage_outcome)
 }
 
-#' Get all stage column names
+#' Default simulator for unknown stage types
 #' @keywords internal
-get_stage_cols <- function(simulation_stages, score_col) {
-  purrr::map_chr(simulation_stages, ~ paste0(.x$name, "_", score_col))
+simulate_stage.default <- function(data, stage, policy) {
+  cli::cli_abort("Unknown simulation stage type: {.cls {class(stage)[1]}}")
+  # Return vector of NAs with the correct size
+  rep(NA_integer_, nrow(data))
 }
 
-#' Prepare column names
+
+# --- Helper and Core Logic Functions ---
+
+#' Validate inputs for a simulation run
 #' @keywords internal
-prepare_column_names <- function(score_col) {
-  list(
-    new_approval = paste0("approval_", score_col),
-    scenario = paste0("scenario_", score_col),
-    simulated_default = paste0("default_simulated_", score_col)
+validate_simulation_inputs <- function(data, policy) {
+  if (!inherits(policy, "credit_policy")) {
+    cli::cli_abort("{.arg policy} must be a {.cls credit_policy} object.")
+  }
+  if (!is.data.frame(data)) {
+    cli::cli_abort("{.arg data} must be a data frame.")
+  }
+  if (length(policy$simulation_stages) == 0) {
+    cli::cli_abort("The policy has no defined simulation stages. Use {.fn stage_cutoff} or {.fn stage_rate} to add stages.")
+  }
+  # Further validation for columns can be added here
+  return(invisible(TRUE))
+}
+
+
+#' Classify scenarios based on current and new approval decisions
+#' @keywords internal
+classify_scenarios <- function(data, policy, new_approval_col) {
+  current_approval_col <- policy$current_approval_col
+
+  data$scenario <- dplyr::case_when(
+    data[[current_approval_col]] == 0 & data[[new_approval_col]] == TRUE ~ "swap_in",
+    data[[current_approval_col]] == 1 & data[[new_approval_col]] == FALSE ~ "swap_out",
+    data[[current_approval_col]] == 1 & data[[new_approval_col]] == TRUE ~ "keep_in",
+    data[[current_approval_col]] == 0 & data[[new_approval_col]] == FALSE ~ "keep_out",
+    TRUE ~ NA_character_
+  )
+
+  return(data)
+}
+
+
+#' Assign default outcomes for the final approved population
+#' @keywords internal
+assign_simulated_defaults <- function(data, policy) {
+  swap_in_defaults <- simulate_swap_in_defaults(data, policy)
+
+  if (nrow(swap_in_defaults) > 0) {
+    data <- dplyr::left_join(data, swap_in_defaults, by = policy$applicant_id_col)
+  } else {
+    data$swap_in_default <- NA_integer_
+  }
+
+  data$simulated_default <- dplyr::case_when(
+    data$scenario == "keep_in" ~ data[[policy$actual_default_col]],
+    data$scenario == "swap_in" ~ data$swap_in_default,
+    TRUE ~ NA_integer_
+  )
+
+  data$swap_in_default <- NULL
+  return(data)
+}
+
+#' Simulate default outcomes for swap-in applicants
+#' @keywords internal
+simulate_swap_in_defaults <- function(data, policy) {
+  swap_ins <- data[data$scenario == "swap_in" & !is.na(data$scenario), ]
+
+  if (nrow(swap_ins) == 0) {
+    return(tibble::tibble())
+  }
+
+  if (length(policy$stress_scenarios) == 0) {
+    cli::cli_alert_warning("No stress scenarios defined for swap-in defaults. Default outcomes will be NA.")
+    return(tibble::tibble(!!policy$applicant_id_col := swap_ins[[policy$applicant_id_col]], swap_in_default = NA_integer_))
+  }
+
+  # Calculate probability for each stress scenario
+  prob_matrix <- purrr::map_dfc(policy$stress_scenarios, function(scenario) {
+    switch(scenario$type,
+           "aggravation" = calc_prob_aggravation(data, policy, scenario),
+           "monotonic_increase" = calc_prob_monotonic(swap_ins, scenario$score_col, scenario),
+           cli::cli_abort("Unknown stress scenario type: {scenario$type}")
+    )
+  })
+
+  # For each applicant, take the highest (most conservative) probability
+  final_prob <- apply(prob_matrix, 1, max, na.rm = TRUE)
+  # Ensure probability is between 0 and 1
+  final_prob[is.infinite(final_prob)] <- 1
+  final_prob <- pmin(pmax(final_prob, 0), 1)
+
+  # Simulate default based on the final probability
+  simulated_outcomes <- as.integer(stats::runif(length(final_prob)) < final_prob)
+
+  tibble::tibble(
+    !!policy$applicant_id_col := swap_ins[[policy$applicant_id_col]],
+    swap_in_default = simulated_outcomes
   )
 }
 
-#' Calculate approval by new score
+#' Calculate default probability based on aggravation
 #' @keywords internal
-calculate_new_approval <- function(data, score_col, new_approval_col) {
-  cutoff_col <- paste0(score_col, "_min")
+calc_prob_aggravation <- function(data, policy, scenario) {
+  group_vars <- scenario$by %||% policy$risk_level_col
 
-  data %>%
-    dplyr::mutate(
-      !!new_approval_col := as.integer(.data[[score_col]] >= .data[[cutoff_col]])
-    )
+  # Baseline should be calculated on the original approved population
+  keep_ins <- data[data$scenario == "keep_in" & !is.na(data$scenario), ]
+
+  if (is.null(group_vars)) {
+    # Global aggravation
+    baseline_rate <- mean(keep_ins[[policy$actual_default_col]], na.rm = TRUE)
+    agg_rate <- baseline_rate * scenario$factor
+    return(rep(agg_rate, nrow(data[data$scenario == "swap_in" & !is.na(data$scenario), ])))
+  }
+
+  # Grouped aggravation
+  baseline_rates <- keep_ins %>%
+    dplyr::group_by(dplyr::across(dplyr::all_of(group_vars))) %>%
+    dplyr::summarise(baseline_rate = mean(.data[[policy$actual_default_col]], na.rm = TRUE), .groups = "drop")
+
+  agg_factor <- scenario$factor
+
+  swap_ins <- data %>%
+    dplyr::filter(.data$scenario == "swap_in" & !is.na(.data$scenario)) %>%
+    dplyr::left_join(baseline_rates, by = group_vars) %>%
+    dplyr::mutate(agg_rate = .data$baseline_rate * agg_factor)
+
+  if (anyNA(swap_ins$agg_rate)) {
+    global_baseline <- mean(keep_ins[[policy$actual_default_col]], na.rm = TRUE)
+    swap_ins$agg_rate[is.na(swap_ins$agg_rate)] <- global_baseline * scenario$factor
+    cli::cli_alert_warning("Some swap-in groups had no baseline for default aggravation and used the global average.")
+  }
+
+  return(swap_ins$agg_rate)
 }
 
-#' Classify scenarios
+#' Calculate probability based on a monotonic score-to-rate trend
 #' @keywords internal
-classify_scenarios <- function(data, current_approval_col, final_approval_col, scenario_col) {
-  data %>%
-    dplyr::mutate(
-      !!scenario_col := dplyr::case_when(
-        .data[[current_approval_col]] == 0 & .data[[final_approval_col]] == 1 ~ "swap_in",
-        .data[[current_approval_col]] == 1 & .data[[final_approval_col]] == 0 ~ "swap_out",
-        .data[[current_approval_col]] == 1 & .data[[final_approval_col]] == 1 ~ "keep_in",
-        .data[[current_approval_col]] == 0 & .data[[final_approval_col]] == 0 ~ "keep_out",
-        TRUE ~ NA_character_
-      )
-    )
-}
+calc_prob_monotonic <- function(data, score_col, params) {
+  score_values <- data[[score_col]]
 
-#' Simulate defaults
-#' @keywords internal
-simulate_defaults <- function(data, score_col, config, col_names) {
-  # Calculate base rates by risk level from keep_ins
-  base_rates <- data %>%
-    dplyr::filter(.data[[col_names$scenario]] == "keep_in") %>%
-    dplyr::group_by(.data[[config$risk_level_col]]) %>%
-    dplyr::summarise(
-      base_rate = mean(.data[[config$actual_default_col]], na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    dplyr::mutate(
-      aggravated_rate = base_rate * config$aggravation_factors[.data[[config$risk_level_col]]]
-    )
+  interp_fun <- stats::approxfun(
+    x = range(score_values, na.rm = TRUE),
+    y = c(params$rate_at_min, params$rate_at_max),
+    rule = 2 # Use the closest value for points outside the range
+  )
 
-  # Join base rates with main data
-  data <- data %>%
-    dplyr::left_join(base_rates, by = config$risk_level_col)
-
-  # Simulate default only for swap_ins and keep_ins
-  data %>%
-    dplyr::mutate(
-      !!col_names$simulated_default := dplyr::case_when(
-        # Keep observed default for keep_ins
-        .data[[col_names$scenario]] == "keep_in" ~ .data[[config$actual_default_col]],
-
-        # Simulate default for swap_ins with aggravation
-        .data[[col_names$scenario]] == "swap_in" ~ as.integer(stats::runif(dplyr::n()) < .data$aggravated_rate),
-
-        # NA for swap_out and keep_out (not approved)
-        TRUE ~ NA_integer_
-      )
-    ) %>%
-    dplyr::select(-base_rate, -aggravated_rate)
+  interp_fun(score_values)
 }

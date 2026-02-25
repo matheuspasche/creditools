@@ -3,6 +3,9 @@
 #' @param results Simulation results
 #' @param by Grouping variables
 #'
+#' @importFrom purrr map_dfr
+#' @importFrom dplyr group_by across all_of summarise n
+#'
 #' @return Data frame with summary statistics
 #' @export
 summarize_results <- function(results, by = NULL) {
@@ -20,16 +23,16 @@ summarize_results <- function(results, by = NULL) {
   }
 
   # For each score, calculate metrics
-  score_metrics <- purrr::map_dfr(config$score_columns, function(score_col) {
+  score_metrics <- map_dfr(config$score_columns, function(score_col) {
     scenario_col <- paste0("scenario_", score_col)
     default_col <- paste0("default_simulated_", score_col)
     final_approval_col <- get_final_approval_col(config$simulation_stages, score_col)
 
     data %>%
-      dplyr::group_by(dplyr::across(dplyr::all_of(c(by, scenario_col)))) %>%
-      dplyr::summarise(
+      group_by(across(all_of(c(by, scenario_col)))) %>%
+      summarise(
         score = score_col,
-        volume = dplyr::n(),
+        volume = n(),
         approval_rate = mean(.data[[final_approval_col]], na.rm = TRUE),
         default_rate = mean(.data[[default_col]], na.rm = TRUE),
         .groups = "drop"
