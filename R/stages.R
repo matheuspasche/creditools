@@ -33,6 +33,9 @@ new_credit_policy_stage <- function(name, type, ...) {
 #'
 #' @rdname new_credit_policy_stage
 #' @export
+#' @examples
+#' # Defines a stage that requires a 'new_score' of at least 650
+#' credit_stage <- stage_cutoff(name = "credit_check", cutoffs = list(new_score = 650))
 stage_cutoff <- function(name, cutoffs, observed_outcome_col = NULL) {
   if (!is.list(cutoffs) || is.null(names(cutoffs))) {
     cli::cli_abort("{.arg cutoffs} must be a named list of score cutoffs.")
@@ -59,6 +62,9 @@ stage_cutoff <- function(name, cutoffs, observed_outcome_col = NULL) {
 #'
 #' @rdname new_credit_policy_stage
 #' @export
+#' @examples
+#' # Defines a stage with a 95% pass rate (e.g., for fraud checks)
+#' fraud_stage <- stage_rate(name = "fraud_check", base_rate = 0.95)
 stage_rate <- function(name, base_rate, observed_outcome_col = NULL, stress_by_score = NULL) {
   if (!is.null(stress_by_score)) {
     if (!is.list(stress_by_score) || !all(c("score_col", "rate_at_min", "rate_at_max") %in% names(stress_by_score))) {

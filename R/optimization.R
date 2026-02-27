@@ -27,6 +27,38 @@
 #'   with its performance metrics. The full evaluation results are available in
 #'   the `evaluation_results` attribute of the returned object.
 #' @export
+#' @examples
+#' # This is a long-running example, wrapped in \dontrun{} for automated checks.
+#' # For a real use case, you would run this code.
+#' \dontrun{
+#'   # 1. Generate data and define a base policy
+#'   sample_data <- generate_sample_data(n_applicants = 2000, seed = 42)
+#'   base_policy <- credit_policy(
+#'     applicant_id_col = "id",
+#'     score_cols = "new_score",
+#'     current_approval_col = "approved",
+#'     actual_default_col = "defaulted"
+#'   )
+#'
+#'   # 2. Find optimal cutoffs
+#'   # This will test 10 different cutoffs for "new_score"
+#'   opt_results <- find_optimal_cutoffs(
+#'     data = sample_data,
+#'     config = base_policy,
+#'     cutoff_steps = 10,
+#'     target_default_rate = 0.15,
+#'     min_approval_rate = 0.20
+#'   )
+#'
+#'  # 3. View the single best result
+#'  print(opt_results)
+#'
+#'  # 4. Analyze the trade-offs across all tested combinations
+#'  tradeoff_analysis <- analyze_tradeoffs(opt_results)
+#'
+#'  # 5. Visualize the Pareto frontier
+#'  visualize_tradeoffs(tradeoff_analysis, type = "pareto")
+#' }
 find_optimal_cutoffs <- function(data, config,
                                  cutoff_steps = 10,
                                  target_default_rate = 0.05,
@@ -230,6 +262,8 @@ find_optimal_results <- function(results, target_default_rate, min_approval_rate
 #' @return A list containing the overall analysis, the Pareto frontier, and
 #'   the optimal result.
 #' @export
+#' @examples
+#' # See the full workflow example in ?find_optimal_cutoffs
 analyze_tradeoffs <- function(opt_results) {
   if (!inherits(opt_results, "credit_opt_results")) {
     cli::cli_abort("{.arg opt_results} must be from {.fn find_optimal_cutoffs}")
@@ -289,6 +323,8 @@ find_pareto_frontier <- function(analysis_data) {
 #'
 #' @return A `ggplot` object.
 #' @export
+#' @examples
+#' # See the full workflow example in ?find_optimal_cutoffs
 visualize_tradeoffs <- function(analysis_results, type = "tradeoff") {
   if (!inherits(analysis_results, "credit_tradeoff_analysis")) {
     cli::cli_abort("{.arg analysis_results} must be from {.fn analyze_tradeoffs}")
