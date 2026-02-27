@@ -219,7 +219,7 @@ run_tradeoff_analysis <- function(data,
         by = temp_policy$risk_level_col # Inherit grouping from base policy
       )
       # Replace or append stress scenarios
-      temp_policy$stress_scenarios <- list(agg_stress)
+      temp_policy$stress_scenarios <- list(dynamic_stress = agg_stress)
     }
 
     # --- Run Simulation & Summarize ---

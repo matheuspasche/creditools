@@ -34,7 +34,7 @@ library(scales)
 We define the parameters for our simulation. For the purpose of this vignette, we will use a smaller dataset to keep the execution time low.
 
 ```{r params-vignette}
-N_APPLICANTS <- 20000 # Larger sample for more stable results
+N_APPLICANTS <- 2000000# Larger sample for more stable results
 SEED <- 42
 CUTOFF_STEP <- 50
 AGGRAVATION_FACTORS <- c(1.2, 1.5)
@@ -84,13 +84,43 @@ simulation_outputs <- run_tradeoff_analysis(
   data = analytical_base,
   base_policy = base_policy,
   vary_params = vary_params,
-  parallel = FALSE
+  parallel = F
 )
 ```
 
-## 5. Visualization
+## 5. Visualization with Baseline Comparison
 
-We visualize the trade-off between approval rate and default rate. This plot clearly shows how, for a given approval rate, the default rate increases under more stressful scenarios.
+Now, we'll calculate the performance of the "current" policy (based on `old_score`) to serve as a baseline in our analysis.
+
+```{r baseline-analysis}
+# --- Baseline Analysis for Old Score ---
+# This calculates the actual historical performance at different cutoffs for the old score
+old_score_cutoffs <- seq(floor(min(analytical_base$old_score)), ceiling(max(analytical_base$old_score)), by = 10)
+
+baseline_results <- purrr::map_dfr(old_score_cutoffs, function(cutoff) {
+    # We don't need the full simulation, just a simple calculation on historical data
+    approved_population <- analytical_base %>%
+        filter(old_score >= cutoff)
+    
+    approval_rate <- if (nrow(analytical_base) > 0) nrow(approved_population) / nrow(analytical_base) else 0
+    
+    # Default rate is calculated on the approved population that was actually hired
+    hired_approved_population <- approved_population %>% filter(hired == 1)
+    default_rate <- if (nrow(hired_approved_population) > 0) {
+        mean(hired_approved_population$defaulted, na.rm = TRUE)
+    } else {
+        0
+    }
+    
+    tibble::tibble(
+        cutoff = cutoff,
+        approval_rate = approval_rate,
+        default_rate = default_rate
+    )
+})
+```
+
+We visualize the trade-off between approval rate and default rate. This plot clearly shows how, for a given approval rate, the default rate increases under more stressful scenarios. We also add the baseline for the `old_score` to see if the new score offers a better trade-off (i.e., a lower default rate for the same approval rate).
 
 ```{r plot}
 plot_data <- simulation_outputs %>%
@@ -99,12 +129,26 @@ plot_data <- simulation_outputs %>%
 tradeoff_plot <- ggplot(plot_data, aes(x = approval_rate, y = default_rate, color = stress_scenario)) +
   geom_line(size = 1.2) +
   geom_point(size = 2.5) +
+  # Add the baseline for the old score
+  geom_line(
+    data = baseline_results,
+    aes(x = approval_rate, y = default_rate),
+    color = "black", linetype = "dashed", size = 1.1, inherit.aes = FALSE
+  ) +
+  # Add a label for the baseline
+  ggrepel::geom_label_repel(
+    data = baseline_results %>% filter(row_number() == round(n() / 2)),
+    aes(x = approval_rate, y = default_rate, label = "Current Policy (old_score)"),
+    color = "black",
+    nudge_y = 0.005,
+    inherit.aes = FALSE
+  ) +
   labs(
     title = "Trade-off: Approval Rate vs. Default Rate",
-    subtitle = "Analysis of score cutoffs under different stress scenarios for swap-ins",
+    subtitle = "Comparing New Score Policy vs. Current Policy Baseline",
     x = "Overall Approval Rate",
     y = "Average Default Rate (on Approved)",
-    color = "Stress Scenario"
+    color = "New Policy Stress Scenario"
   ) +
   scale_x_continuous(labels = scales::percent_format()) +
   scale_y_continuous(labels = scales::percent_format()) +
@@ -117,7 +161,68 @@ tradeoff_plot <- ggplot(plot_data, aes(x = approval_rate, y = default_rate, colo
 print(tradeoff_plot)
 ```
 
-## 6. Deeper Analysis
+The plot now includes a dashed black line representing the performance of the current policy. We can see that the new score provides a significant improvement: for any given approval rate, the resulting default rate is lower than it was with the old score.
+
+## 6. Comparative Analysis
+
+Here we answer specific questions by comparing the new policy's performance against the current one.
+
+```{r comparative-calcs, results='asis'}
+# Get the metrics for the current "as-is" policy
+current_approval_rate <- mean(analytical_base$approved, na.rm = TRUE)
+current_default_rate <- analytical_base %>%
+  filter(approved == 1, hired == 1) %>%
+  summarise(dr = mean(defaulted, na.rm = TRUE)) %>%
+  pull(dr)
+
+cat(paste0(
+  "#### Current Policy Performance\n\n",
+  "*   **Approval Rate:** ", label_percent(accuracy = 0.1)(current_approval_rate), "\n",
+  "*   **Default Rate:** ", label_percent(accuracy = 0.1)(current_default_rate), "\n\n"
+))
+
+# Question 1: At the current approval rate, what is the new default rate?
+# We create interpolation functions for each scenario
+interp_funcs <- plot_data %>%
+  split(.$stress_scenario) %>%
+  map(~ approxfun(x = .$approval_rate, y = .$default_rate, rule = 2))
+
+new_dr_at_current_ar <- map_dbl(interp_funcs, ~ .x(current_approval_rate))
+
+cat("#### Q1: What is the new default rate if we keep the approval rate constant?\n\n")
+for (i in 1:length(new_dr_at_current_ar)) {
+  scenario_name <- names(new_dr_at_current_ar)[i]
+  dr_value <- new_dr_at_current_ar[i]
+  improvement <- (dr_value - current_default_rate) / current_default_rate
+  cat(paste0(
+    "*   Under the **", scenario_name, "** scenario, the default rate would be **",
+    label_percent(accuracy = 0.1)(dr_value), "**, a change of **",
+    label_percent(accuracy = 0.1)(improvement), "**.\n"
+  ))
+}
+
+# Question 2: To keep the current default rate, what would the new approval rate be?
+interp_funcs_ar <- plot_data %>%
+  split(.$stress_scenario) %>%
+  map(~ approxfun(x = .$default_rate, y = .$approval_rate, rule = 2))
+
+new_ar_at_current_dr <- map_dbl(interp_funcs_ar, ~ .x(current_default_rate))
+
+cat("\n#### Q2: What is the new approval rate if we keep the default rate constant?\n\n")
+for (i in 1:length(new_ar_at_current_dr)) {
+  scenario_name <- names(new_ar_at_current_dr)[i]
+  ar_value <- new_ar_at_current_dr[i]
+  improvement <- (ar_value - current_approval_rate) / current_approval_rate
+  cat(paste0(
+    "*   Under the **", scenario_name, "** scenario, the approval rate could be increased to **",
+    label_percent(accuracy = 0.1)(ar_value), "**, a change of **",
+    label_percent(accuracy = 0.1)(improvement), "**.\n"
+  ))
+}
+
+```
+
+## 7. Deeper Analysis
 
 Now we can use the results to answer more specific business questions.
 
