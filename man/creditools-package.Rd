@@ -19,6 +19,14 @@ The package provides functionality to:
 \item Handle large datasets efficiently
 }
 }
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://github.com/USER/REPO # TODO: Add GitHub repository URL}
+  \item Report bugs at \url{https://github.com/USER/REPO/issues # TODO: Add GitHub issues URL}
+}
+
+}
 \author{
 \strong{Maintainer}: Analyst Credit \email{analyst@example.com}
 

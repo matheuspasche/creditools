@@ -23,3 +23,31 @@ This is the main entry point for running a multi-stage simulation. It takes
 a dataset and a \code{credit_policy} object, then applies the defined sequential
 stages in the policy to simulate new approval decisions and their outcomes.
 }
+\examples{
+# 1. Generate sample data
+sample_data <- generate_sample_data(n_applicants = 1000, seed = 42)
+
+# 2. Define a multi-stage credit policy
+# - Stage 1: Must pass a cutoff on the new_score
+# - Stage 2: Must pass a simulated anti-fraud check (85\% pass rate)
+my_policy <- credit_policy(
+  applicant_id_col = "id",
+  score_cols = c("old_score", "new_score"),
+  current_approval_col = "approved",
+  actual_default_col = "defaulted",
+  simulation_stages = list(
+    stage_cutoff(name = "credit_score", cutoffs = list(new_score = 600)),
+    stage_rate(name = "anti_fraud", base_rate = 0.85)
+  ),
+  stress_scenarios = list(
+    stress_aggravation(factor = 1.3) # 30\% default aggravation for swap-ins
+  )
+)
+
+# 3. Run the simulation
+results <- run_simulation(data = sample_data, policy = my_policy)
+
+# 4. Summarize the results by scenario
+summarize_results(results)
+}
+\concept{simulation}

@@ -13,7 +13,27 @@
 #'   `overall_approval_rate`, and `avg_default_rate_approved`.
 #'
 #' @importFrom dplyr group_by across all_of summarise n
+#' @family analysis
 #' @export
+#'
+#' @examples
+#' # This example builds on the one from ?run_simulation
+#' sample_data <- generate_sample_data(n_applicants = 1000, seed = 42)
+#' sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
+#' my_policy <- credit_policy(
+#'   applicant_id_col = "id",
+#'   score_cols = c("old_score", "new_score"),
+#'   current_approval_col = "approved",
+#'   actual_default_col = "defaulted",
+#'   risk_level_col = "new_score_decile",
+#'   simulation_stages = list(
+#'     stage_cutoff(name = "credit_score", cutoffs = list(new_score = 600))
+#'   )
+#' )
+#' results <- run_simulation(data = sample_data, policy = my_policy)
+#'
+#' # Summarize results by scenario and risk decile
+#' summarize_results(results, by = "new_score_decile")
 summarize_results <- function(results, by = NULL) {
   if (!inherits(results, "credit_sim_results")) {
     cli::cli_abort("{.arg results} must be a {.cls credit_sim_results} object from {.fn run_simulation}.")
@@ -61,136 +81,178 @@ get_final_approval_col <- function(simulation_stages, score_col) {
 }
 
 
-#' Run a trade-off analysis simulation
+#' Run a flexible trade-off analysis simulation
 #'
 #' @description
-#' This wrapper function automates the process of running multiple simulations
-#' to analyze the trade-off between business and risk metrics across a range of
-#' cutoff points and stress scenarios.
+#' This powerful wrapper function automates running multiple simulations to
+#' analyze trade-offs between business and risk metrics. It iterates over a grid
+#' of parameters, dynamically modifying a base credit policy for each combination.
 #'
 #' @details
-#' The function generates a grid of parameters based on the provided cutoff
-#' points and stress scenarios. It then iterates through this grid, running a
-
-#' full simulation for each combination.
+#' The function generates a parameter grid from the named list provided in
+#' `vary_params`. It then iterates through this grid, running a full simulation
+#' for each combination. The function intelligently modifies the policy based on
+#' the names of the parameters in `vary_params`:
 #'
-#' The core logic supports varying a single cutoff score across one or more
-#' simulation stages and applying different stress scenarios. This is useful for
-#' creating sensitivity analysis plots, like the "efficient frontier" between
-#' approval rate and default rate.
+#' - A parameter named `<score_name>_cutoff` will create or modify a
+#'   `stage_cutoff` for that score.
+#' - A parameter named `aggravation_factor` will create or modify a
+#'   `stress_aggravation` scenario.
+#'
+#' This allows for complex sensitivity analyses (e.g., creating an "efficient
+#' frontier" between approval rate and default rate) by varying multiple
+#' business and risk levers simultaneously.
 #'
 #' Parallel processing is supported via the `furrr` package. If `parallel` is
-#' set to `TRUE`, the user must configure their parallel plan beforehand (e.g.,
-#' using `plan(multisession)`).
+#' `TRUE`, the user must configure their parallel plan beforehand (e.g.,
+#' using `future::plan(future::multisession)`).
 #'
-#' @param data A data frame containing the analytical base table with applicant data.
-#' @param policy_stages A list of `credit_policy_stage` objects, as created by
-#'   `stage_cutoff()` or `stage_rate()`. These represent the fixed parts of the
-#'   decision funnel.
-#' @param cutoff_col A character string specifying the name of the score column
-#'   to which the varying cutoffs will be applied.
-#' @param cutoff_points A numeric vector of cutoff values to test.
-#' @param stress_scenarios A named list of stress scenarios to test. The names
-#'   of the list elements are used to identify the scenarios in the output.
-#'   Each element should be a list of stress objects (e.g., from
-#'   `stress_aggravation()`).
-#' @param parallel A logical flag. If `TRUE`, the simulation will run in
-#'   parallel using `furrr`. Defaults to `FALSE`.
-#' @param applicant_id_col,score_cols,current_approval_col,actual_default_col,risk_level_col
-#'   Arguments passed directly to `credit_policy()` to map columns in the data.
+#' @param data A data frame containing the analytical base table.
+#' @param base_policy A `credit_policy` object that serves as the template for
+#'   each simulation run.
+#' @param vary_params A named list of parameters to vary. The function will create
+#'   a grid of all combinations of these parameters. For example:
+#'   `list(new_score_cutoff = seq(500, 600, 10), aggravation_factor = c(1.2, 1.5))`
+#' @param parallel A logical flag. If `TRUE`, the simulation runs in parallel
+#'   using `furrr`. Defaults to `FALSE`.
 #'
 #' @return A data frame (tibble) summarizing the results for each parameter
-#'   combination. It includes columns for the cutoff value, scenario name,
-#'   approval rate, and default rate.
+#'   combination. It includes columns for each varied parameter, plus
+#'   `approval_rate` and `default_rate`.
 #'
 #' @importFrom tidyr expand_grid
-#' @importFrom purrr map2_dfr
-#' @importFrom furrr future_map2_dfr
+#' @importFrom purrr pmap_dfr
+#' @importFrom furrr future_pmap_dfr
 #' @importFrom rlang .data
+#' @family analysis
 #' @export
+#'
+#' @examples
+#' \dontrun{
+#' # 1. Generate sample data and create a base policy
+#' sample_data <- generate_sample_data(n_applicants = 10000, seed = 42)
+#' sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
+#'
+#' base_policy <- credit_policy(
+#'   applicant_id_col = "id",
+#'   score_cols = c("old_score", "new_score"),
+#'   current_approval_col = "approved",
+#'   actual_default_col = "defaulted",
+#'   risk_level_col = "new_score_decile",
+#'   simulation_stages = list(
+#'     # A fixed anti-fraud stage for all simulations
+#'     stage_rate(name = "anti_fraud", base_rate = 0.95)
+#'   )
+#' )
+#'
+#' # 2. Define parameters to vary
+#' # We will test 11 cutoff points and 2 stress scenarios, for 22 total simulations
+#' vary_params <- list(
+#'   new_score_cutoff = seq(500, 700, by = 20),
+#'   aggravation_factor = c(1.2, 1.5)
+#' )
+#'
+#' # 3. Run the analysis (in parallel if a plan is set)
+#' # library(future)
+#' # plan(multisession)
+#' tradeoff_results <- run_tradeoff_analysis(
+#'   data = sample_data,
+#'   base_policy = base_policy,
+#'   vary_params = vary_params,
+#'   parallel = FALSE # Set to TRUE to use parallel backend
+#' )
+#'
+#' # 4. Plot the results
+#' library(ggplot2)
+#' tradeoff_results %>%
+#'   mutate(Stress = paste0(round((aggravation_factor - 1) * 100), "% PD Aggravation")) %>%
+#'   ggplot(aes(x = approval_rate, y = default_rate, color = Stress)) +
+#'   geom_line() +
+#'   geom_point() +
+#'   labs(
+#'     title = "Efficient Frontier: Approval vs. Default Rate",
+#'     x = "Overall Approval Rate", y = "Average Default Rate"
+#'   ) +
+#'   theme_minimal()
+#' }
 run_tradeoff_analysis <- function(data,
-                                  policy_stages,
-                                  cutoff_col,
-                                  cutoff_points,
-                                  stress_scenarios,
-                                  applicant_id_col,
-                                  score_cols,
-                                  current_approval_col,
-                                  actual_default_col,
-                                  risk_level_col = NULL,
+                                  base_policy,
+                                  vary_params,
                                   parallel = FALSE) {
 
-  if (!is.character(cutoff_col) || length(cutoff_col) != 1) {
-    cli::cli_abort("{.arg cutoff_col} must be a single character string.")
+  if (!inherits(base_policy, "credit_policy")) {
+    cli::cli_abort("{.arg base_policy} must be a {.cls credit_policy} object.")
   }
-  if (!is.numeric(cutoff_points)) {
-    cli::cli_abort("{.arg cutoff_points} must be a numeric vector.")
-  }
-  if (!is.list(stress_scenarios) || is.null(names(stress_scenarios))) {
-    cli::cli_abort("{.arg stress_scenarios} must be a named list.")
+  if (!is.list(vary_params) || is.null(names(vary_params)) || length(vary_params) == 0) {
+    cli::cli_abort("{.arg vary_params} must be a non-empty named list.")
   }
 
   # Create a grid of all combinations to test
-  params_grid <- tidyr::expand_grid(
-    cutoff = cutoff_points,
-    scenario_name = names(stress_scenarios)
-  )
+  params_grid <- tidyr::expand_grid(!!!vary_params)
 
-  run_single_sim <- function(cutoff_value, scenario_name) {
-    # Dynamically create the cutoff stage for the current iteration
-    cutoff_stage <- stage_cutoff(
-      name = paste0("cutoff_", cutoff_col),
-      cutoffs = stats::setNames(list(cutoff_value), cutoff_col)
-    )
+  run_single_sim <- function(...) {
+    # Capture the current combination of parameters
+    current_params <- list(...)
+    temp_policy <- base_policy
 
-    # Combine the fixed stages with the dynamic cutoff stage
-    full_stages <- c(policy_stages, list(cutoff_stage))
+    # --- Dynamically Modify Policy ---
 
-    # Create the full policy object
-    temp_policy <- credit_policy(
-      applicant_id_col = applicant_id_col,
-      score_cols = score_cols,
-      current_approval_col = current_approval_col,
-      actual_default_col = actual_default_col,
-      risk_level_col = risk_level_col,
-      simulation_stages = full_stages,
-      stress_scenarios = stress_scenarios[[scenario_name]]
-    )
+    # 1. Handle Cutoffs
+    cutoff_params <- current_params[grepl("_cutoff$", names(current_params))]
+    if (length(cutoff_params) > 0) {
+      names(cutoff_params) <- sub("_cutoff$", "", names(cutoff_params))
+      # Create a new cutoff stage with all cutoffs for this iteration
+      dynamic_cutoff_stage <- stage_cutoff(
+        name = "dynamic_cutoffs",
+        cutoffs = cutoff_params
+      )
+      # Append to existing stages
+      temp_policy$simulation_stages <- c(temp_policy$simulation_stages, list(dynamic_cutoff_stage))
+    }
 
-    # Run the simulation
+    # 2. Handle Stress Scenarios (example for aggravation_factor)
+    if ("aggravation_factor" %in% names(current_params)) {
+      # This assumes we are modifying the *first* stress scenario.
+      # A more robust implementation could target scenarios by name.
+      agg_stress <- stress_aggravation(
+        factor = current_params$aggravation_factor,
+        by = temp_policy$risk_level_col # Inherit grouping from base policy
+      )
+      # Replace or append stress scenarios
+      temp_policy$stress_scenarios <- list(agg_stress)
+    }
+
+    # --- Run Simulation & Summarize ---
     sim_results <- run_simulation(
       data = data,
       policy = temp_policy
     )
 
-    # Summarize the results
-    # We calculate metrics manually here to be more direct than summarize_results
     final_data <- sim_results$data
     approved_pop <- final_data %>% dplyr::filter(.data$new_approval == TRUE)
 
-    overall_approval_rate <- nrow(approved_pop) / nrow(final_data)
+    overall_approval_rate <- if (nrow(final_data) > 0) nrow(approved_pop) / nrow(final_data) else 0
     avg_default_rate_approved <- if (nrow(approved_pop) > 0) {
       mean(approved_pop$simulated_default, na.rm = TRUE)
     } else {
       0
     }
 
-    tibble::tibble(
-      cutoff = cutoff_value,
-      scenario = scenario_name,
-      approval_rate = overall_approval_rate,
-      default_rate = avg_default_rate_approved
-    )
+    # Combine params with results
+    result_row <- tibble::as_tibble(current_params)
+    result_row$approval_rate <- overall_approval_rate
+    result_row$default_rate <- avg_default_rate_approved
+    
+    return(result_row)
   }
 
   # Choose the mapping function based on the parallel flag
-  map_fun <- if (parallel) furrr::future_map2_dfr else purrr::map2_dfr
+  map_fun <- if (parallel) furrr::future_pmap_dfr else purrr::pmap_dfr
 
   cli::cli_alert_info("Running {nrow(params_grid)} simulations...")
   
   simulation_outputs <- map_fun(
-    .x = params_grid$cutoff,
-    .y = params_grid$scenario_name,
+    .l = params_grid,
     .f = run_single_sim,
     .progress = TRUE
   )

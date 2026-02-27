@@ -1,3 +1,18 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
 # creditools
 
 <!-- badges: start -->
@@ -30,7 +45,7 @@ Here is a quick walk-through of the main workflow.
 
 First, we'll generate a sample dataset. `creditools` provides a handy function for this.
 
-```r
+```{r example-setup}
 library(creditools)
 library(dplyr)
 library(ggplot2)
@@ -43,7 +58,7 @@ sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
 
 Let's analyze the impact of switching to `new_score`. We want to test different cutoffs for this score and see how the results change under different default rate stress scenarios for the newly approved population (`swap-ins`).
 
-```r
+```{r example-tradeoff}
 # Define a base policy. Stages and stresses will be added dynamically.
 base_policy <- credit_policy(
   applicant_id_col = "id",
@@ -70,23 +85,11 @@ tradeoff_results <- run_tradeoff_analysis(
 head(tradeoff_results)
 ```
 
-```
-## # A tibble: 6 × 4
-##   new_score_cutoff aggravation_factor approval_rate default_rate
-##              <dbl>              <dbl>         <dbl>        <dbl>
-## 1              500                1.2         0.758       0.0528
-## 2              500                1.5         0.758       0.0660
-## 3              500                1.8         0.758       0.0792
-## 4              525                1.2         0.690       0.0485
-## 5              525                1.5         0.690       0.0606
-## 6              525                1.8         0.690       0.0727
-```
-
 ### 3. Visualize the Results
 
 The output of the analysis is a tidy data frame, perfect for plotting with `ggplot2`. We can now visualize the "efficient frontier" showing the trade-off between approval rate and default rate for each stress scenario.
 
-```r
+```{r example-plot}
 tradeoff_results %>%
   mutate(Stress = paste0(round((aggravation_factor - 1) * 100), "% PD Aggravation")) %>%
   ggplot(aes(x = approval_rate, y = default_rate, color = Stress)) +
@@ -103,5 +106,3 @@ tradeoff_results %>%
   theme_minimal() +
   theme(legend.position = "bottom")
 ```
-
-<!-- PLOT_PLACEHOLDER: A plot showing the efficient frontier would be rendered here. -->

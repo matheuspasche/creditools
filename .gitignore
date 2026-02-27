@@ -10,5 +10,3 @@ Rplots.pdf
 # Ignore analysis outputs
 /analysis/
 
-# LLM workflow
-/llm/

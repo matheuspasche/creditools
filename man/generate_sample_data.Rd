@@ -64,7 +64,7 @@ analytical_base <- generate_sample_data(
 
 # Check the migration
 table(
-  ntile(analytical_base$score_antigo, 10),
-  ntile(analytical_base$score_novo, 10)
+  ntile(analytical_base$old_score, 10),
+  ntile(analytical_base$new_score, 10)
 )
 }
