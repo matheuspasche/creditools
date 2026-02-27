@@ -16,3 +16,6 @@ the optimal result.
 \description{
 Analyze trade-offs between approval and default rates
 }
+\examples{
+# See the full workflow example in ?find_optimal_cutoffs
+}

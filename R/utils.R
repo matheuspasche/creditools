@@ -7,6 +7,9 @@
 #'
 #' @return Sequence of cutoff values
 #' @export
+#' @examples
+#' df <- data.frame(score = round(rnorm(100, 600, 50)))
+#' generate_efficient_cutoff_sequence(df, "score", n_steps = 5, method = "quantile")
 generate_efficient_cutoff_sequence <- function(data, score_col, n_steps = 10,
                                                method = c("quantile", "linear", "optimal")) {
   method <- match.arg(method)
@@ -48,6 +51,9 @@ generate_efficient_cutoff_sequence <- function(data, score_col, n_steps = 10,
 #'
 #' @return Number of steps needed
 #' @export
+#' @examples
+#' # For a score that ranges from 300 to 850, with 10-point precision
+#' calculate_required_steps(score_range = c(300, 850), desired_precision = 10)
 calculate_required_steps <- function(score_range, desired_precision = 10, max_steps = 100) {
   range_size <- diff(score_range)
   required_steps <- ceiling(range_size / desired_precision)
@@ -62,6 +68,15 @@ calculate_required_steps <- function(score_range, desired_precision = 10, max_st
 #'
 #' @return List with computation estimates
 #' @export
+#' @examples
+#' # Estimate requirements for an optimization with 2 scores, each with 15 cutoff steps
+#' dummy_policy <- credit_policy(
+#'   applicant_id_col = "id",
+#'   score_cols = c("score1", "score2"),
+#'   current_approval_col = "approved",
+#'   actual_default_col = "defaulted"
+#' )
+#' estimate_computation_requirements(dummy_policy, cutoff_steps = 15)
 estimate_computation_requirements <- function(config, cutoff_steps, sample_size = 10000) {
   n_scores <- length(config$score_columns)
   n_combinations <- cutoff_steps ^ n_scores

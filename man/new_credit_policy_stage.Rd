@@ -48,4 +48,10 @@ defined scores in this stage.
 is determined by a simulated rate. This is useful for stages that are not
 score-based.
 }
+\examples{
+# Defines a stage that requires a 'new_score' of at least 650
+credit_stage <- stage_cutoff(name = "credit_check", cutoffs = list(new_score = 650))
+# Defines a stage with a 95\% pass rate (e.g., for fraud checks)
+fraud_stage <- stage_rate(name = "fraud_check", base_rate = 0.95)
+}
 \keyword{internal}

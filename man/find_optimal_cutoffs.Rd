@@ -49,3 +49,36 @@ combination of cutoffs, it creates a new \code{stage_cutoff} and inserts it as t
 first stage of the simulation funnel. It then runs the full multi-stage
 simulation and evaluates the final metrics.
 }
+\examples{
+# This is a long-running example, wrapped in \dontrun{} for automated checks.
+# For a real use case, you would run this code.
+\dontrun{
+  # 1. Generate data and define a base policy
+  sample_data <- generate_sample_data(n_applicants = 2000, seed = 42)
+  base_policy <- credit_policy(
+    applicant_id_col = "id",
+    score_cols = "new_score",
+    current_approval_col = "approved",
+    actual_default_col = "defaulted"
+  )
+
+  # 2. Find optimal cutoffs
+  # This will test 10 different cutoffs for "new_score"
+  opt_results <- find_optimal_cutoffs(
+    data = sample_data,
+    config = base_policy,
+    cutoff_steps = 10,
+    target_default_rate = 0.15,
+    min_approval_rate = 0.20
+  )
+
+ # 3. View the single best result
+ print(opt_results)
+
+ # 4. Analyze the trade-offs across all tested combinations
+ tradeoff_analysis <- analyze_tradeoffs(opt_results)
+
+ # 5. Visualize the Pareto frontier
+ visualize_tradeoffs(tradeoff_analysis, type = "pareto")
+}
+}

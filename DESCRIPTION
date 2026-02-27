@@ -2,7 +2,7 @@ Package: creditools
 Title: A Toolkit for Credit Risk Simulation and Trade-Off Analysis
 Version: 0.1.0
 Authors@R: 
-    person("Analyst", "Credit", email = "analyst@example.com", role = c("aut", "cre"))
+    person("Matheus", "Pasche", email = "matheuspasche@outlook.com", role = c("aut", "cre", "cph"))
 Description: Provides a comprehensive suite of tools for forward-looking credit
     risk analysis and policy simulation. The core purpose of 'creditools' is to
     empower risk analysts to move beyond traditional back-testing by simulating
@@ -18,8 +18,9 @@ License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
-URL: https://github.com/USER/REPO # TODO: Add GitHub repository URL
-BugReports: https://github.com/USER/REPO/issues # TODO: Add GitHub issues URL
+VignetteBuilder: knitr
+URL: https://github.com/matheuspasche/creditools
+BugReports: https://github.com/matheuspasche/creditools/issues
 Imports:
     cli (>= 3.0.0),
     dplyr (>= 1.0.0),
@@ -30,15 +31,18 @@ Imports:
     tidyr (>= 1.1.0),
     stringr (>= 1.4.0),
     magrittr (>= 2.0.0),
-    ggplot2 (>= 3.3.0)
+    ggplot2 (>= 3.3.0),
+    furrr
 Suggests:
     devtools,
     future,
-    furrr,
+    ggrepel,
     knitr,
     readr,
     rmarkdown,
+    scales,
     testthat (>= 3.0.0),
+    tidyverse,
     usethis,
     writexl
 Config/testthat/edition: 3

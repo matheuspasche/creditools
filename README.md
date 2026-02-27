@@ -1,26 +1,46 @@
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
 # creditools
 
 <!-- badges: start -->
+
+[![Lifecycle:
+experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![R-CMD-check](https://github.com/matheuspasche/creditools/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/matheuspasche/creditools/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
-The goal of `creditools` is to provide a flexible and powerful framework for simulating and analyzing credit policies. It allows risk analysts to model multi-stage decision funnels, simulate the impact of new strategies (e.g., changing score cutoffs), and analyze the trade-off between business metrics (like approval rate) and risk metrics (like default rate) under various stress scenarios.
+The goal of `creditools` is to provide a flexible and powerful framework
+for simulating and analyzing credit policies. It allows risk analysts to
+model multi-stage decision funnels, simulate the impact of new
+strategies (e.g., changing score cutoffs), and analyze the trade-off
+between business metrics (like approval rate) and risk metrics (like
+default rate) under various stress scenarios.
 
 ## Installation
 
-You can install the development version of creditools from [GitHub](https://github.com/) with:
+You can install the development version of creditools from
+[GitHub](https://github.com/) with:
 
 ``` r
 # install.packages("devtools")
-devtools::install_github("YOUR_GITHUB_USERNAME/creditools")
+devtools::install_github("matheuspasche/creditools")
 ```
 
 ## Core Concepts
 
 The package is built around three main ideas:
 
-1.  **`credit_policy()`**: A central object that holds all the configuration for a simulation: column mappings, the sequence of decision stages, and stress scenarios for default simulation.
-2.  **`stages`**: A policy is composed of sequential stages, such as `stage_cutoff()` (for score-based decisions) or `stage_rate()` (for probabilistic stages like fraud checks or conversion rates).
-3.  **`run_simulation()` / `run_tradeoff_analysis()`**: The simulation engines. `run_simulation()` executes a single, defined policy, while `run_tradeoff_analysis()` is a powerful wrapper that runs dozens or hundreds of simulations to explore the impact of varying parameters.
+1.  **`credit_policy()`**: A central object that holds all the
+    configuration for a simulation: column mappings, the sequence of
+    decision stages, and stress scenarios for default simulation.
+2.  **`stages`**: A policy is composed of sequential stages, such as
+    `stage_cutoff()` (for score-based decisions) or `stage_rate()` (for
+    probabilistic stages like fraud checks or conversion rates).
+3.  **`run_simulation()` / `run_tradeoff_analysis()`**: The simulation
+    engines. `run_simulation()` executes a single, defined policy, while
+    `run_tradeoff_analysis()` is a powerful wrapper that runs dozens or
+    hundreds of simulations to explore the impact of varying parameters.
 
 ## A Complete Example
 
@@ -28,22 +48,39 @@ Here is a quick walk-through of the main workflow.
 
 ### 1. Load Package and Generate Data
 
-First, we'll generate a sample dataset. `creditools` provides a handy function for this.
+First, we’ll generate a sample dataset. `creditools` provides a handy
+function for this.
 
-```r
+``` r
 library(creditools)
+#> i creditools 0.1.0 loaded
+#> i Use `create_config()` to set up simulation parameters
 library(dplyr)
+#> Warning: package 'dplyr' was built under R version 4.1.3
+#> 
+#> Attaching package: 'dplyr'
+#> The following objects are masked from 'package:stats':
+#> 
+#>     filter, lag
+#> The following objects are masked from 'package:base':
+#> 
+#>     intersect, setdiff, setequal, union
 library(ggplot2)
 
 sample_data <- generate_sample_data(n_applicants = 20000, seed = 42)
+#> i Generating realistic sample data for 20000 applicants...
+#> v Generating realistic sample data for 20000 applicants... ... done
 sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
 ```
 
 ### 2. Define and Run a Trade-off Analysis
 
-Let's analyze the impact of switching to `new_score`. We want to test different cutoffs for this score and see how the results change under different default rate stress scenarios for the newly approved population (`swap-ins`).
+Let’s analyze the impact of switching to `new_score`. We want to test
+different cutoffs for this score and see how the results change under
+different default rate stress scenarios for the newly approved
+population (`swap-ins`).
 
-```r
+``` r
 # Define a base policy. Stages and stresses will be added dynamically.
 base_policy <- credit_policy(
   applicant_id_col = "id",
@@ -66,27 +103,109 @@ tradeoff_results <- run_tradeoff_analysis(
   base_policy = base_policy,
   vary_params = vary_params
 )
+#> i Running 33 simulations...
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> New names:
+#> v Multi-stage simulation completed for 20000 applicants.
+#> =========================>----- 85% | ETA: 0s
+#> New names:
+#> 
+#> v Multi-stage simulation completed for 20000 applicants.
+#> =========================>----- 85% | ETA: 0s
+#> New names:
+#> 
+#> v Multi-stage simulation completed for 20000 applicants.
+#> =========================>----- 85% | ETA: 0s
+#> ===========================>--- 91% | ETA: 0s
+#> New names:
+#> 
+#> v Multi-stage simulation completed for 20000 applicants.
+#> ===========================>--- 91% | ETA: 0s
+#> New names:
+#> 
+#> v Multi-stage simulation completed for 20000 applicants.
+#> ===========================>--- 91% | ETA: 0s
+#> New names:
+#> 
+#> v Multi-stage simulation completed for 20000 applicants.
+#> ===========================>--- 91% | ETA: 0s
+#> 
+#> v All simulations complete.
+#> * `` -> `...1`
 
 head(tradeoff_results)
-```
-
-```
-## # A tibble: 6 × 4
-##   new_score_cutoff aggravation_factor approval_rate default_rate
-##              <dbl>              <dbl>         <dbl>        <dbl>
-## 1              500                1.2         0.758       0.0528
-## 2              500                1.5         0.758       0.0660
-## 3              500                1.8         0.758       0.0792
-## 4              525                1.2         0.690       0.0485
-## 5              525                1.5         0.690       0.0606
-## 6              525                1.8         0.690       0.0727
+#> # A tibble: 6 x 4
+#>   new_score_cutoff aggravation_factor approval_rate default_rate
+#>              <dbl>              <dbl>         <dbl>        <dbl>
+#> 1              500                1.2         0.498       0.0803
+#> 2              500                1.5         0.498       0.0879
+#> 3              500                1.8         0.498       0.0896
+#> 4              525                1.2         0.473       0.0806
+#> 5              525                1.5         0.473       0.0810
+#> 6              525                1.8         0.473       0.0919
 ```
 
 ### 3. Visualize the Results
 
-The output of the analysis is a tidy data frame, perfect for plotting with `ggplot2`. We can now visualize the "efficient frontier" showing the trade-off between approval rate and default rate for each stress scenario.
+The output of the analysis is a tidy data frame, perfect for plotting
+with `ggplot2`. We can now visualize the “efficient frontier” showing
+the trade-off between approval rate and default rate for each stress
+scenario.
 
-```r
+``` r
 tradeoff_results %>%
   mutate(Stress = paste0(round((aggravation_factor - 1) * 100), "% PD Aggravation")) %>%
   ggplot(aes(x = approval_rate, y = default_rate, color = Stress)) +
@@ -104,4 +223,4 @@ tradeoff_results %>%
   theme(legend.position = "bottom")
 ```
 
-<!-- PLOT_PLACEHOLDER: A plot showing the efficient frontier would be rendered here. -->
+<img src="man/figures/README-example-plot-1.png" width="100%" />

@@ -6,3 +6,10 @@
 ^tempCodeRunnerFile\.R$
 ^analytical_base\.csv$
 ^tradeoff_plot\.png$
+^README\.Rmd$
+^figure$
+^data-raw$
+^_pkgdown\.yml$
+^\.github$
+^docs$
+^pkgdown$

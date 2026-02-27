@@ -26,3 +26,7 @@ Sequence of cutoff values
 \description{
 Generate efficient cutoff sequences based on score distribution
 }
+\examples{
+df <- data.frame(score = round(rnorm(100, 600, 50)))
+generate_efficient_cutoff_sequence(df, "score", n_steps = 5, method = "quantile")
+}

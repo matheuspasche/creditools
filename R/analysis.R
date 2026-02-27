@@ -128,9 +128,8 @@ get_final_approval_col <- function(simulation_stages, score_col) {
 #' @export
 #'
 #' @examples
-#' \dontrun{
 #' # 1. Generate sample data and create a base policy
-#' sample_data <- generate_sample_data(n_applicants = 10000, seed = 42)
+#' sample_data <- generate_sample_data(n_applicants = 1000, seed = 42)
 #' sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
 #'
 #' base_policy <- credit_policy(
@@ -146,40 +145,39 @@ get_final_approval_col <- function(simulation_stages, score_col) {
 #' )
 #'
 #' # 2. Define parameters to vary
-#' # We will test 11 cutoff points and 2 stress scenarios, for 22 total simulations
+#' # We will test a few cutoff points and 2 stress scenarios
 #' vary_params <- list(
-#'   new_score_cutoff = seq(500, 700, by = 20),
+#'   new_score_cutoff = seq(500, 700, by = 50),
 #'   aggravation_factor = c(1.2, 1.5)
 #' )
 #'
-#' # 3. Run the analysis (in parallel if a plan is set)
-#' # library(future)
-#' # plan(multisession)
+#' # 3. Run the analysis
 #' tradeoff_results <- run_tradeoff_analysis(
 #'   data = sample_data,
 #'   base_policy = base_policy,
 #'   vary_params = vary_params,
-#'   parallel = FALSE # Set to TRUE to use parallel backend
+#'   parallel = FALSE
 #' )
 #'
 #' # 4. Plot the results
-#' library(ggplot2)
-#' tradeoff_results %>%
-#'   mutate(Stress = paste0(round((aggravation_factor - 1) * 100), "% PD Aggravation")) %>%
-#'   ggplot(aes(x = approval_rate, y = default_rate, color = Stress)) +
-#'   geom_line() +
-#'   geom_point() +
-#'   labs(
-#'     title = "Efficient Frontier: Approval vs. Default Rate",
-#'     x = "Overall Approval Rate", y = "Average Default Rate"
-#'   ) +
-#'   theme_minimal()
+#' if (requireNamespace("ggplot2", quietly = TRUE) && requireNamespace("dplyr", quietly = TRUE)) {
+#'   library(ggplot2)
+#'   library(dplyr)
+#'   tradeoff_results %>%
+#'     mutate(Stress = paste0(round((aggravation_factor - 1) * 100), "% PD Aggravation")) %>%
+#'     ggplot(aes(x = approval_rate, y = default_rate, color = Stress)) +
+#'     geom_line() +
+#'     geom_point() +
+#'     labs(
+#'       title = "Efficient Frontier: Approval vs. Default Rate",
+#'       x = "Overall Approval Rate", y = "Average Default Rate"
+#'     ) +
+#'     theme_minimal()
 #' }
 run_tradeoff_analysis <- function(data,
                                   base_policy,
                                   vary_params,
                                   parallel = FALSE) {
-
   if (!inherits(base_policy, "credit_policy")) {
     cli::cli_abort("{.arg base_policy} must be a {.cls credit_policy} object.")
   }
@@ -242,7 +240,7 @@ run_tradeoff_analysis <- function(data,
     result_row <- tibble::as_tibble(current_params)
     result_row$approval_rate <- overall_approval_rate
     result_row$default_rate <- avg_default_rate_approved
-    
+
     return(result_row)
   }
 
@@ -250,7 +248,7 @@ run_tradeoff_analysis <- function(data,
   map_fun <- if (parallel) furrr::future_pmap_dfr else purrr::pmap_dfr
 
   cli::cli_alert_info("Running {nrow(params_grid)} simulations...")
-  
+
   simulation_outputs <- map_fun(
     .l = params_grid,
     .f = run_single_sim,
