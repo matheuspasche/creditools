@@ -22,13 +22,13 @@ The package provides functionality to:
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/USER/REPO # TODO: Add GitHub repository URL}
-  \item Report bugs at \url{https://github.com/USER/REPO/issues # TODO: Add GitHub issues URL}
+  \item \url{https://github.com/matheuspasche/creditools}
+  \item Report bugs at \url{https://github.com/matheuspasche/creditools/issues}
 }
 
 }
 \author{
-\strong{Maintainer}: Analyst Credit \email{analyst@example.com}
+\strong{Maintainer}: Matheus Pasche \email{matheuspasche@outlook.com} [copyright holder]
 
 }
 \keyword{internal}

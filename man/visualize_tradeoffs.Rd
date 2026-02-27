@@ -18,3 +18,6 @@ A \code{ggplot} object.
 \description{
 Visualize trade-off analysis
 }
+\examples{
+# See the full workflow example in ?find_optimal_cutoffs
+}

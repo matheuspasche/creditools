@@ -50,9 +50,8 @@ Parallel processing is supported via the \code{furrr} package. If \code{parallel
 using \code{future::plan(future::multisession)}).
 }
 \examples{
-\dontrun{
 # 1. Generate sample data and create a base policy
-sample_data <- generate_sample_data(n_applicants = 10000, seed = 42)
+sample_data <- generate_sample_data(n_applicants = 1000, seed = 42)
 sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
 
 base_policy <- credit_policy(
@@ -68,34 +67,33 @@ base_policy <- credit_policy(
 )
 
 # 2. Define parameters to vary
-# We will test 11 cutoff points and 2 stress scenarios, for 22 total simulations
+# We will test a few cutoff points and 2 stress scenarios
 vary_params <- list(
-  new_score_cutoff = seq(500, 700, by = 20),
+  new_score_cutoff = seq(500, 700, by = 50),
   aggravation_factor = c(1.2, 1.5)
 )
 
-# 3. Run the analysis (in parallel if a plan is set)
-# library(future)
-# plan(multisession)
+# 3. Run the analysis
 tradeoff_results <- run_tradeoff_analysis(
   data = sample_data,
   base_policy = base_policy,
   vary_params = vary_params,
-  parallel = FALSE # Set to TRUE to use parallel backend
+  parallel = FALSE
 )
 
 # 4. Plot the results
-library(ggplot2)
-tradeoff_results \%>\%
-  mutate(Stress = paste0(round((aggravation_factor - 1) * 100), "\% PD Aggravation")) \%>\%
-  ggplot(aes(x = approval_rate, y = default_rate, color = Stress)) +
-  geom_line() +
-  geom_point() +
-  labs(
-    title = "Efficient Frontier: Approval vs. Default Rate",
-    x = "Overall Approval Rate", y = "Average Default Rate"
-  ) +
-  theme_minimal()
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  library(ggplot2)
+  tradeoff_results \%>\%
+    mutate(Stress = paste0(round((aggravation_factor - 1) * 100), "\% PD Aggravation")) \%>\%
+    ggplot(aes(x = approval_rate, y = default_rate, color = Stress)) +
+    geom_line() +
+    geom_point() +
+    labs(
+      title = "Efficient Frontier: Approval vs. Default Rate",
+      x = "Overall Approval Rate", y = "Average Default Rate"
+    ) +
+    theme_minimal()
 }
 }
 \seealso{

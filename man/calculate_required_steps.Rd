@@ -19,3 +19,7 @@ Number of steps needed
 \description{
 Calculate required cutoff steps based on desired precision
 }
+\examples{
+# For a score that ranges from 300 to 850, with 10-point precision
+calculate_required_steps(score_range = c(300, 850), desired_precision = 10)
+}

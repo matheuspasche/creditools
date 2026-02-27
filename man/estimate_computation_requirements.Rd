@@ -19,3 +19,13 @@ List with computation estimates
 \description{
 Estimate computation requirements for optimization
 }
+\examples{
+# Estimate requirements for an optimization with 2 scores, each with 15 cutoff steps
+dummy_policy <- credit_policy(
+  applicant_id_col = "id",
+  score_cols = c("score1", "score2"),
+  current_approval_col = "approved",
+  actual_default_col = "defaulted"
+)
+estimate_computation_requirements(dummy_policy, cutoff_steps = 15)
+}

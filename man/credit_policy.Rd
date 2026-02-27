@@ -63,3 +63,25 @@ Creates a new \code{credit_policy} object, which defines all the parameters
 needed to run a credit simulation. This includes column mappings,
 score definitions, simulation stages, and stress testing parameters.
 }
+\examples{
+# Define a simple credit policy
+my_policy <- credit_policy(
+  applicant_id_col = "id",
+  score_cols = c("score_v1", "score_v2"),
+  current_approval_col = "approved_v1",
+  actual_default_col = "defaulted",
+  risk_level_col = "risk_band",
+  simulation_stages = list(
+    # New policy requires passing a score cutoff AND a fraud check
+    stage_cutoff(name = "credit_check", cutoffs = list(score_v2 = 700)),
+    stage_rate(name = "fraud_check", base_rate = 0.98)
+  ),
+  stress_scenarios = list(
+    # For swap-ins, simulate defaults with a 30\% uplift on the baseline
+    stress_aggravation(factor = 1.3, by = "risk_band")
+  )
+)
+
+# Print the policy to see a summary
+print(my_policy)
+}
