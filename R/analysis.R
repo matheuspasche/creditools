@@ -160,8 +160,9 @@ get_final_approval_col <- function(simulation_stages, score_col) {
 #' )
 #'
 #' # 4. Plot the results
-#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#' if (requireNamespace("ggplot2", quietly = TRUE) && requireNamespace("dplyr", quietly = TRUE)) {
 #'   library(ggplot2)
+#'   library(dplyr)
 #'   tradeoff_results %>%
 #'     mutate(Stress = paste0(round((aggravation_factor - 1) * 100), "% PD Aggravation")) %>%
 #'     ggplot(aes(x = approval_rate, y = default_rate, color = Stress)) +
@@ -177,7 +178,6 @@ run_tradeoff_analysis <- function(data,
                                   base_policy,
                                   vary_params,
                                   parallel = FALSE) {
-
   if (!inherits(base_policy, "credit_policy")) {
     cli::cli_abort("{.arg base_policy} must be a {.cls credit_policy} object.")
   }
@@ -240,7 +240,7 @@ run_tradeoff_analysis <- function(data,
     result_row <- tibble::as_tibble(current_params)
     result_row$approval_rate <- overall_approval_rate
     result_row$default_rate <- avg_default_rate_approved
-    
+
     return(result_row)
   }
 
@@ -248,7 +248,7 @@ run_tradeoff_analysis <- function(data,
   map_fun <- if (parallel) furrr::future_pmap_dfr else purrr::pmap_dfr
 
   cli::cli_alert_info("Running {nrow(params_grid)} simulations...")
-  
+
   simulation_outputs <- map_fun(
     .l = params_grid,
     .f = run_single_sim,

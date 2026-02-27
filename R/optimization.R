@@ -367,7 +367,7 @@ create_pareto_plot <- function(analysis_results) {
   pareto_data <- analysis_results$pareto_frontier
   optimal_point <- analysis_results$optimal_result
 
-  ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$overall_approval_rate, y = .data.overall_default_rate)) +
+  ggplot2::ggplot(plot_data, ggplot2::aes(x = .data$overall_approval_rate, y = .data$overall_default_rate)) +
     ggplot2::geom_point(alpha = 0.2, color = "grey70") +
     ggplot2::geom_line(data = pareto_data, color = "blue", size = 1) +
     ggplot2::geom_point(data = pareto_data, color = "blue", size = 2) +

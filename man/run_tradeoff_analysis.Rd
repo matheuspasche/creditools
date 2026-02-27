@@ -82,8 +82,9 @@ tradeoff_results <- run_tradeoff_analysis(
 )
 
 # 4. Plot the results
-if (requireNamespace("ggplot2", quietly = TRUE)) {
+if (requireNamespace("ggplot2", quietly = TRUE) && requireNamespace("dplyr", quietly = TRUE)) {
   library(ggplot2)
+  library(dplyr)
   tradeoff_results \%>\%
     mutate(Stress = paste0(round((aggravation_factor - 1) * 100), "\% PD Aggravation")) \%>\%
     ggplot(aes(x = approval_rate, y = default_rate, color = Stress)) +

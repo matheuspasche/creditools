@@ -18,6 +18,9 @@
 #' @importFrom tidyr pivot_longer
 #' @importFrom stringr str_detect str_remove
 #' @importFrom utils packageVersion
+#' @importFrom dplyr filter
+#' @importFrom purrr map map_int compact keep
+#' @importFrom rlang := %||% .data
 #'
 #' @keywords internal
 "_PACKAGE"

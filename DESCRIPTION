@@ -31,15 +31,18 @@ Imports:
     tidyr (>= 1.1.0),
     stringr (>= 1.4.0),
     magrittr (>= 2.0.0),
-    ggplot2 (>= 3.3.0)
+    ggplot2 (>= 3.3.0),
+    furrr
 Suggests:
     devtools,
     future,
-    furrr,
+    ggrepel,
     knitr,
     readr,
     rmarkdown,
+    scales,
     testthat (>= 3.0.0),
+    tidyverse,
     usethis,
     writexl
 Config/testthat/edition: 3

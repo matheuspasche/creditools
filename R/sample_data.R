@@ -21,7 +21,9 @@
 #'   a moderate amount of churn.
 #' @param base_default_rate The approximate overall default rate in the population.
 #' @param base_approval_rate The historical approval rate based on the old score.
-#' @param base_hire_rate The historical hire rate for approved applicants.
+#' @param default_rate_dispersion Controls the separation between good and bad risk.
+#' @param min_conversion_rate The minimum conversion rate for the best scores.
+#' @param max_conversion_rate The maximum conversion rate for the worst scores.
 #' @param seed A random seed for reproducibility.
 #'
 #' @return A tibble with the generated sample data, including IDs, scores,
@@ -36,12 +38,13 @@
 #'   churn_rate = 1,
 #'   seed = 42
 #' )
-#'
+#' \dontrun{
 #' # Check the migration
 #' table(
-#'   ntile(analytical_base$old_score, 10),
-#'   ntile(analytical_base$new_score, 10)
+#'   dplyr::ntile(analytical_base$old_score, 10),
+#'   dplyr::ntile(analytical_base$new_score, 10)
 #' )
+#'}
 generate_sample_data <- function(n_applicants = 20000,
                                  correlation = 0.7,
                                  churn_rate = 1.0,

@@ -17,6 +17,7 @@ knitr::opts_chunk$set(
 
 <!-- badges: start -->
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![R-CMD-check](https://github.com/matheuspasche/creditools/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/matheuspasche/creditools/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 The goal of `creditools` is to provide a flexible and powerful framework for simulating and analyzing credit policies. It allows risk analysts to model multi-stage decision funnels, simulate the impact of new strategies (e.g., changing score cutoffs), and analyze the trade-off between business metrics (like approval rate) and risk metrics (like default rate) under various stress scenarios.
