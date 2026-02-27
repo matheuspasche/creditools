@@ -25,17 +25,17 @@ analytical_base <- creditools::generate_sample_data(
 )
 
 # Add a decile column for the new score, to be used for stratified analysis
-analytical_base$decil_novo <- dplyr::ntile(analytical_base$score_novo, 10)
+analytical_base$new_score_decile <- dplyr::ntile(analytical_base$new_score, 10)
 
-cli::cli_alert_info("Checking score correlation: {round(cor(analytical_base$score_antigo, analytical_base$score_novo), 2)}")
+cli::cli_alert_info("Checking score correlation: {round(cor(analytical_base$old_score, analytical_base$new_score), 2)}")
 
 # --- 2. Validate Score Migration ---
 # This table shows how applicants move between risk deciles from the old
 # score to the new one. The off-diagonal values represent the migration or "churn".
 cli::cli_h1("2. Validating Score Decile Migration")
 migration_table <- table(
-  `Decil Antigo` = dplyr::ntile(analytical_base$score_antigo, 10),
-  `Decil Novo` = analytical_base$decil_novo
+  `Old Score Decile` = dplyr::ntile(analytical_base$old_score, 10),
+  `New Score Decile` = analytical_base$new_score_decile
 )
 print(migration_table)
 
@@ -44,12 +44,12 @@ print(migration_table)
 cli::cli_h1("3. Setting up Credit Policy Simulation")
 
 # Stage 1: Credit decision based on the new score
-cutoff_value <- stats::median(analytical_base$score_novo)
+cutoff_value <- stats::median(analytical_base$new_score)
 credit_stage <- stage_cutoff(
   name = "credit_decision",
-  cutoffs = list(score_novo = cutoff_value)
+  cutoffs = list(new_score = cutoff_value)
 )
-cli::cli_alert_info("Stage 1 (Credit): Approve if score_novo >= {round(cutoff_value)}")
+cli::cli_alert_info("Stage 1 (Credit): Approve if new_score >= {round(cutoff_value)}")
 
 # Stage 2: Anti-fraud model with a flat approval rate
 antifraud_stage <- stage_rate(
@@ -64,7 +64,7 @@ conversion_stage <- stage_rate(
   name = "conversion",
   base_rate = 0, # Placeholder, as logic is driven by stress_by_score
   stress_by_score = list(
-    score_col = "score_novo",
+    score_col = "new_score",
     rate_at_min = 0.90, # Corresponds to the lowest score
     rate_at_max = 0.75  # Corresponds to the highest score
   )
@@ -75,17 +75,17 @@ cli::cli_alert_info("Stage 3 (Conversion): Monotonic rate from 90% (worst scores
 # Create the full policy object with the 3-stage funnel and a single stress scenario.
 policy <- credit_policy(
   applicant_id_col = "id",
-  score_cols = c("score_antigo", "score_novo"),
+  score_cols = c("old_score", "new_score"),
   current_approval_col = "approved",
   actual_default_col = "defaulted",
-  risk_level_col = "decil_novo", # For stratified stress tests
+  risk_level_col = "new_score_decile", # For stratified stress tests
   simulation_stages = list(
     credit_stage,
     antifraud_stage,
     conversion_stage
   ),
   stress_scenarios = list(
-    stress_aggravation(factor = 1.3, by = "decil_novo")
+    stress_aggravation(factor = 1.3, by = "new_score_decile")
   )
 )
 
@@ -103,7 +103,7 @@ cli::cli_h1("5. Summarizing and Saving Outputs")
 # The summary aggregates key metrics by risk decile for each scenario.
 summary_table <- summarize_results(
   simulation_results,
-  by = "decil_novo"
+  by = "new_score_decile"
 )
 
 # Define output paths
@@ -127,10 +127,10 @@ cli::cli_h2("Simulation Complete")
 print(summary_table)
 
 
-summary%>%
-  summarise(pd_simulada = mean(simulated_default, na.rm = T), .by = c(decil_novo, scenario))%>%
-  pivot_wider(names_from = scenario, values_from =pd_simulada)%>%
+summary_table %>%
+  summarise(simulated_pd = mean(simulated_default, na.rm = T), .by = c(new_score_decile, scenario))%>%
+  pivot_wider(names_from = scenario, values_from = simulated_pd)%>%
   filter(!is.na(keep_in))%>%
-  arrange(decil_novo)%>%
+  arrange(new_score_decile)%>%
   select(1,2,5)%>%
   mutate(delta = swap_in/keep_in)

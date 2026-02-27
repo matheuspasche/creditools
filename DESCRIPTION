@@ -1,20 +1,25 @@
 Package: creditools
-Title: Credit Policy Simulation and Optimization Tools
+Title: A Toolkit for Credit Risk Simulation and Trade-Off Analysis
 Version: 0.1.0
 Authors@R: 
     person("Analyst", "Credit", email = "analyst@example.com", role = c("aut", "cre"))
-Description: A toolkit for forward-looking credit risk analysis. 'creditools'
-    allows risk analysts to simulate the impact of changing credit policies by
-    modeling outcomes for previously rejected applicants ('swap-ins'). It provides
-    a framework for defining stress scenarios based on risk aggravation or
-    monotonic score-to-risk assumptions, enabling robust estimation of approval
-    rates, and potential losses under new cutoff strategies. The package also
-    includes functions to analyze the trade-offs and optimize score cutoffs
-    to find the efficient frontier between business and risk metrics.
+Description: Provides a comprehensive suite of tools for forward-looking credit
+    risk analysis and policy simulation. The core purpose of 'creditools' is to
+    empower risk analysts to move beyond traditional back-testing by simulating
+    the potential outcomes of new credit strategies. It allows for the creation of
+    multi-stage decision funnels (e.g., score cutoffs, fraud checks, conversion rates)
+    and models the performance of previously rejected applicants ('swap-ins') under
+    these new policies. Key features include simulating defaults for this 'swap-in'
+    population under various stress scenarios, running large-scale analyses to map
+    the trade-off between approval rates and default rates, and finding optimal
+    score cutoffs that align with business constraints. It is an essential toolkit
+    for data-driven strategy and optimization in the credit industry.
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Roxygen: list(markdown = TRUE)
+URL: https://github.com/USER/REPO # TODO: Add GitHub repository URL
+BugReports: https://github.com/USER/REPO/issues # TODO: Add GitHub issues URL
 Imports:
     cli (>= 3.0.0),
     dplyr (>= 1.0.0),

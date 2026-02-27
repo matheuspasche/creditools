@@ -23,31 +23,29 @@ sample_data <- tibble::tribble(
 )
 
 test_that("validate_simulation_inputs works correctly", {
-  policy <- get_test_policy()
-  cutoffs <- list(score1 = 700)
-  
-  expect_true(validate_simulation_inputs(sample_data, policy, cutoffs))
+  policy <- get_test_policy(simulation_stages = list(stage_cutoff("test", list(score1=700))))
+
+  expect_true(validate_simulation_inputs(sample_data, policy))
   
   # Fail if policy is wrong
-  expect_error(validate_simulation_inputs(sample_data, list(), cutoffs), "must be a")
+  expect_error(validate_simulation_inputs(sample_data, list()), "must be a")
   
-  # Fail if data is missing columns
-  bad_data <- sample_data[, -1]
-  expect_error(validate_simulation_inputs(bad_data, policy, cutoffs), "missing")
-  
-  # Fail if cutoffs are bad
-  expect_error(validate_simulation_inputs(sample_data, policy, list()), "at least one")
-  expect_error(validate_simulation_inputs(sample_data, policy, list(score3 = 100)), "not defined")
+  # Fail if policy has no stages
+  expect_error(validate_simulation_inputs(sample_data, get_test_policy()), "no defined simulation stages")
 })
 
-test_that("apply_cutoffs works with single and multiple scores", {
+test_that("simulate_stage.stage_cutoff works with single and multiple scores", {
+  policy <- get_test_policy()
+  
   # Single cutoff
-  data1 <- apply_cutoffs(sample_data, list(score1 = 700))
-  expect_equal(data1$new_approval, c(1, 0, 0, 1, 1))
+  stage1 <- stage_cutoff("s1", cutoffs = list(score1 = 700))
+  res1 <- simulate_stage(sample_data, stage1, policy)
+  expect_equal(res1, c(1, 0, 0, 1, 1))
   
   # Multiple cutoffs (AND logic)
-  data2 <- apply_cutoffs(sample_data, list(score1 = 700, score2 = 750))
-  expect_equal(data2$new_approval, c(1, 0, 0, 0, 1))
+  stage2 <- stage_cutoff("s2", cutoffs = list(score1 = 700, score2 = 750))
+  res2 <- simulate_stage(sample_data, stage2, policy)
+  expect_equal(res2, c(1, 0, 0, 0, 1))
 })
 
 test_that("classify_scenarios identifies all four scenarios", {
@@ -59,6 +57,6 @@ test_that("classify_scenarios identifies all four scenarios", {
   # new approved: 1, 0, 1, 0, 1
   # expected: keep_in, swap_out, swap_in, keep_out, keep_in
   
-  result <- classify_scenarios(data, policy)
+  result <- creditools:::classify_scenarios(data, policy, "new_approval")
   expect_equal(result$scenario, c("keep_in", "swap_out", "swap_in", "keep_out", "keep_in"))
 })

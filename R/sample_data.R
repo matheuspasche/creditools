@@ -39,8 +39,8 @@
 #'
 #' # Check the migration
 #' table(
-#'   ntile(analytical_base$score_antigo, 10),
-#'   ntile(analytical_base$score_novo, 10)
+#'   ntile(analytical_base$old_score, 10),
+#'   ntile(analytical_base$new_score, 10)
 #' )
 generate_sample_data <- function(n_applicants = 20000,
                                  correlation = 0.7,
@@ -95,8 +95,8 @@ generate_sample_data <- function(n_applicants = 20000,
     # --- Scores ---
     # We use pnorm to convert the unbounded normal latent scores to a [0, 1] scale,
     # then scale to 0-1000. This creates a more realistic, non-linear distribution.
-    score_antigo = round(stats::pnorm(latent_score_1) * 1000),
-    score_novo = round(stats::pnorm(latent_score_2) * 1000),
+    old_score = round(stats::pnorm(latent_score_1) * 1000),
+    new_score = round(stats::pnorm(latent_score_2) * 1000),
 
     # --- True Outcome ---
     # Simulate who actually defaults based on their probability of default
@@ -104,16 +104,16 @@ generate_sample_data <- function(n_applicants = 20000,
   )
 
   # 5. Simulate historical policy outcomes
-  # Historical approval was based on `score_antigo`
-  cutoff_approval <- stats::quantile(analytical_base$score_antigo, 1 - base_approval_rate)
-  analytical_base$approved <- as.integer(analytical_base$score_antigo >= cutoff_approval)
+  # Historical approval was based on `old_score`
+  cutoff_approval <- stats::quantile(analytical_base$old_score, 1 - base_approval_rate)
+  analytical_base$approved <- as.integer(analytical_base$old_score >= cutoff_approval)
 
   # Historical hiring was conditional on approval, with a monotonic conversion rate
-  analytical_base$hired <- 0
+  analytical_base$hired <- 0L
   approved_idx <- which(analytical_base$approved == 1)
   
   if (length(approved_idx) > 0) {
-    approved_scores <- analytical_base$score_antigo[approved_idx]
+    approved_scores <- analytical_base$old_score[approved_idx]
     min_score <- min(approved_scores, na.rm = TRUE)
     max_score <- max(approved_scores, na.rm = TRUE)
 

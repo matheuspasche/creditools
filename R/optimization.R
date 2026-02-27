@@ -37,7 +37,7 @@ find_optimal_cutoffs <- function(data, config,
   validate_optimization_inputs(data, config, cutoff_steps, target_default_rate, min_approval_rate)
 
   # Generate cutoff ranges for each score defined in the base policy
-  cutoff_ranges <- generate_cutoff_ranges(data, config$score_columns, cutoff_steps)
+  cutoff_ranges <- generate_cutoff_ranges(data, config$score_cols, cutoff_steps)
 
   # Evaluate all cutoff combinations
   results <- evaluate_cutoff_combinations(
@@ -72,7 +72,7 @@ validate_optimization_inputs <- function(data, config, cutoff_steps, target_defa
   required_cols <- c(
     config$current_approval_col,
     config$actual_default_col,
-    config$score_columns
+    config$score_cols
   )
   if (!is.null(config$risk_level_col)) required_cols <- c(required_cols, config$risk_level_col)
 
@@ -147,7 +147,7 @@ evaluate_single_combination <- function(combo_id, cutoff_combinations, data, con
   sim_results <- run_simulation(data, temp_policy)
 
   # Calculate performance metrics from the final simulation results
-  metrics <- calculate_metrics(sim_results)
+  metrics <- calculate_metrics(sim_results$data)
 
   constraints_met <- all(
     metrics$overall_default_rate <= target_default_rate,
