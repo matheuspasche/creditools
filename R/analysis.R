@@ -116,6 +116,8 @@ get_final_approval_col <- function(simulation_stages, score_col) {
 #' @param parallel A logical flag. If `TRUE`, the simulation runs in parallel
 #'   using `furrr`. Defaults to `FALSE`.
 #'
+#' @param quiet Whether to suppress progress and status messages. Default is FALSE.
+#'
 #' @return A data frame (tibble) summarizing the results for each parameter
 #'   combination. It includes columns for each varied parameter, plus
 #'   `approval_rate` and `default_rate`.
@@ -177,7 +179,8 @@ get_final_approval_col <- function(simulation_stages, score_col) {
 run_tradeoff_analysis <- function(data,
                                   base_policy,
                                   vary_params,
-                                  parallel = FALSE) {
+                                  parallel = FALSE,
+                                  quiet = FALSE) {
   if (!inherits(base_policy, "credit_policy")) {
     cli::cli_abort("{.arg base_policy} must be a {.cls credit_policy} object.")
   }
@@ -223,7 +226,8 @@ run_tradeoff_analysis <- function(data,
     # --- Run Simulation & Summarize ---
     sim_results <- run_simulation(
       data = data,
-      policy = temp_policy
+      policy = temp_policy,
+      quiet = TRUE
     )
 
     final_data <- sim_results$data
@@ -247,15 +251,15 @@ run_tradeoff_analysis <- function(data,
   # Choose the mapping function based on the parallel flag
   map_fun <- if (parallel) furrr::future_pmap_dfr else purrr::pmap_dfr
 
-  cli::cli_alert_info("Running {nrow(params_grid)} simulations...")
+  if (!quiet) cli::cli_alert_info("Running {nrow(params_grid)} simulations...")
 
   simulation_outputs <- map_fun(
     .l = params_grid,
     .f = run_single_sim,
-    .progress = TRUE
+    .progress = !quiet
   )
 
-  cli::cli_alert_success("All simulations complete.")
+  if (!quiet) cli::cli_alert_success("All simulations complete.")
 
   return(simulation_outputs)
 }

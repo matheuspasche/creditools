@@ -53,23 +53,10 @@ function for this.
 
 ``` r
 library(creditools)
-#> i creditools 0.1.0 loaded
-#> i Use `create_config()` to set up simulation parameters
 library(dplyr)
-#> Warning: package 'dplyr' was built under R version 4.1.3
-#> 
-#> Attaching package: 'dplyr'
-#> The following objects are masked from 'package:stats':
-#> 
-#>     filter, lag
-#> The following objects are masked from 'package:base':
-#> 
-#>     intersect, setdiff, setequal, union
 library(ggplot2)
 
 sample_data <- generate_sample_data(n_applicants = 20000, seed = 42)
-#> i Generating realistic sample data for 20000 applicants...
-#> v Generating realistic sample data for 20000 applicants... ... done
 sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
 ```
 
@@ -103,88 +90,6 @@ tradeoff_results <- run_tradeoff_analysis(
   base_policy = base_policy,
   vary_params = vary_params
 )
-#> i Running 33 simulations...
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> New names:
-#> v Multi-stage simulation completed for 20000 applicants.
-#> =========================>----- 85% | ETA: 0s
-#> New names:
-#> 
-#> v Multi-stage simulation completed for 20000 applicants.
-#> =========================>----- 85% | ETA: 0s
-#> New names:
-#> 
-#> v Multi-stage simulation completed for 20000 applicants.
-#> =========================>----- 85% | ETA: 0s
-#> ===========================>--- 91% | ETA: 0s
-#> New names:
-#> 
-#> v Multi-stage simulation completed for 20000 applicants.
-#> ===========================>--- 91% | ETA: 0s
-#> New names:
-#> 
-#> v Multi-stage simulation completed for 20000 applicants.
-#> ===========================>--- 91% | ETA: 0s
-#> New names:
-#> 
-#> v Multi-stage simulation completed for 20000 applicants.
-#> ===========================>--- 91% | ETA: 0s
-#> 
-#> v All simulations complete.
-#> * `` -> `...1`
 
 head(tradeoff_results)
 #> # A tibble: 6 x 4
