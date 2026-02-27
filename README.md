@@ -44,87 +44,141 @@ The package is built around three main ideas:
 
 ## A Complete Example
 
-Here is a quick walk-through of the main workflow.
+Here is a walk-through of a complex, realistic simulation using a
+massive analytical base (\> 1.5 Million applicants), multiple decision
+stages (Credit, Fraud, Conversion), parallel processing, and custom
+stress scenarios.
 
-### 1. Load Package and Generate Data
+### 1. Load Package, Parallel Plan and Generate Data
 
-First, we’ll generate a sample dataset. `creditools` provides a handy
-function for this.
+First, we’ll generate 1,500,000 applicants mimicking a historical base
+where applicants have an “old_score” and a new challenger “new_score”.
+We want to evaluate if the `new_score` mitigates default risk while
+retaining healthy approval and conversion metrics.
 
 ``` r
 library(creditools)
 library(dplyr)
 library(ggplot2)
+library(future)
 
-sample_data <- generate_sample_data(n_applicants = 20000, seed = 42)
+# Enable parallel processing to handle the > 1.5 Million applicant volume swiftly
+future::plan(multisession)
+
+# Generate a massive analytical base (1.5 Million applicants)
+sample_data <- generate_sample_data(n_applicants = 1500000, seed = 42)
+
+# Create stratification bands for the new score
 sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
 ```
 
-### 2. Define and Run a Trade-off Analysis
+### 2. Define Funnel Stages and Credit Policy
 
-Let’s analyze the impact of switching to `new_score`. We want to test
-different cutoffs for this score and see how the results change under
-different default rate stress scenarios for the newly approved
-population (`swap-ins`).
+A risk credit policy is rarely a single cutoff. We build a multi-stage
+funnel where applicants need to sequentially pass through a credit
+filter, an anti-fraud engine, and finally, a conversion rate probability
+(e.g. credit seekers are more likely to accept higher rates).
 
 ``` r
-# Define a base policy. Stages and stresses will be added dynamically.
+# Stage 1: Credit decision (Approval driven by a Score Cutoff)
+credit_stage <- stage_cutoff(
+  name = "credit_decision",
+  cutoffs = list(new_score = 600) # This will be dynamically varied later
+)
+
+# Stage 2: Anti-fraud model (Flat 95% generic pass rate)
+antifraud_stage <- stage_rate(
+  name = "anti_fraud",
+  base_rate = 0.95
+)
+
+# Stage 3: Conversion rate (Monotonically decreasing with score)
+# Worst scores have a robust conversion rate (need credit), best scores have lower rate.
+conversion_stage <- stage_rate(
+  name = "conversion",
+  base_rate = 0.70, # Baseline, overriding dynamically 
+  stress_by_score = list(
+    score_col = "new_score",
+    rate_at_min = 0.90, 
+    rate_at_max = 0.60
+  )
+)
+
+# Create the full policy object
 base_policy <- credit_policy(
   applicant_id_col = "id",
   score_cols = c("old_score", "new_score"),
   current_approval_col = "approved",
   actual_default_col = "defaulted",
-  risk_level_col = "new_score_decile"
+  risk_level_col = "new_score_decile", # Required if we apply stratification in stress test
+  simulation_stages = list(
+    credit_stage,
+    antifraud_stage,
+    conversion_stage
+  )
 )
+```
 
-# Define the parameters we want to vary in our simulations
+### 3. Run a Massively Parallel Trade-off Analysis
+
+We will define parameters to vary dynamically. We want to test different
+score cutoffs to see the “swap-in” effects, while also varying the base
+conversion rate and aggravating the default expectation for newly
+approved customers (a normal phenomena when exploring unsupervised score
+bands).
+
+``` r
+# Define the simulation grid
 vary_params <- list(
-  new_score_cutoff = seq(500, 750, by = 25),
-  aggravation_factor = c(1.2, 1.5, 1.8)
+  new_score_cutoff = seq(450, 750, by = 50),
+  aggravation_factor = c(1.2, 1.5, 1.7) # 20%, 50% and 70% PD Uplift
 )
 
-# Run the analysis!
-# This will run 11 (cutoffs) x 3 (factors) = 33 simulations.
+# Run the parallel analysis!
+# `run_tradeoff_analysis` intercepts names like `*_base_rate` to dynamically override Funnel Stages
 tradeoff_results <- run_tradeoff_analysis(
   data = sample_data,
   base_policy = base_policy,
-  vary_params = vary_params
+  vary_params = vary_params,
+  parallel = TRUE, # Using future multisession
+  quiet = TRUE
 )
 
 head(tradeoff_results)
 #> # A tibble: 6 x 4
 #>   new_score_cutoff aggravation_factor approval_rate default_rate
 #>              <dbl>              <dbl>         <dbl>        <dbl>
-#> 1              500                1.2         0.498       0.0803
-#> 2              500                1.5         0.498       0.0879
-#> 3              500                1.8         0.498       0.0896
-#> 4              525                1.2         0.473       0.0806
-#> 5              525                1.5         0.473       0.0810
-#> 6              525                1.8         0.473       0.0919
+#> 1              450                1.2         0.286       0.0773
+#> 2              450                1.5         0.286       0.0821
+#> 3              450                1.7         0.286       0.0859
+#> 4              500                1.2         0.286       0.0775
+#> 5              500                1.5         0.286       0.0824
+#> 6              500                1.7         0.286       0.0857
 ```
 
-### 3. Visualize the Results
+### 4. Visualize the Results
 
-The output of the analysis is a tidy data frame, perfect for plotting
-with `ggplot2`. We can now visualize the “efficient frontier” showing
-the trade-off between approval rate and default rate for each stress
-scenario.
+The results provide a data frame mapping out an efficient frontier. This
+clearly highlights how migrating to `new_score` mitigates default risk
+depending on the selected cutoff, and showcases the conservative
+aggravation impacts on business volume.
 
 ``` r
 tradeoff_results %>%
-  mutate(Stress = paste0(round((aggravation_factor - 1) * 100), "% PD Aggravation")) %>%
+  mutate(Stress = paste0("+", round((aggravation_factor - 1) * 100), "% PD Aggravation")) %>%
   ggplot(aes(x = approval_rate, y = default_rate, color = Stress)) +
-  geom_line(size = 1) +
-  geom_point(size = 2) +
+  geom_line(size = 1.2) +
+  geom_point(aes(size = new_score_cutoff), alpha = 0.8) +
   labs(
-    title = "Efficient Frontier: Approval vs. Default Rate",
-    subtitle = "Each line represents a different stress scenario for swap-in defaults",
-    x = "Overall Approval Rate", 
-    y = "Average Default Rate (Approved Population)"
+    title = "Efficient Frontier: Migrating to 'New Score'",
+    subtitle = "Trade-off analysis for > 1.5M applicants adjusting for Conversion funnels and PD Aggravations",
+    x = "Overall Approval Volume (End of Funnel Rate)", 
+    y = "Average Default Rate (%)",
+    size = "New Score Cutoff"
   ) +
-  scale_x_continuous(labels = scales::percent_format()) +
-  scale_y_continuous(labels = scales::percent_format()) +
-  theme_minimal() +
+  scale_x_continuous(labels = scales::percent_format(accuracy=1)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy=0.1)) +
+  theme_minimal(base_size = 14) +
   theme(legend.position = "bottom")
 ```
 

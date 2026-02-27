@@ -98,6 +98,8 @@ get_final_approval_col <- function(simulation_stages, score_col) {
 #'   `stage_cutoff` for that score.
 #' - A parameter named `aggravation_factor` will create or modify a
 #'   `stress_aggravation` scenario.
+#' - A parameter named `<stage_name>_base_rate` will dynamically update the
+#'   `base_rate` of an existing `stage_rate` matching that name.
 #'
 #' This allows for complex sensitivity analyses (e.g., creating an "efficient
 #' frontier" between approval rate and default rate) by varying multiple
@@ -221,6 +223,22 @@ run_tradeoff_analysis <- function(data,
       )
       # Replace or append stress scenarios
       temp_policy$stress_scenarios <- list(dynamic_stress = agg_stress)
+    }
+
+    # 3. Handle Dynamic Stage Base Rates (e.g., anti_fraud_base_rate)
+    base_rate_params <- current_params[grepl("_base_rate$", names(current_params))]
+    if (length(base_rate_params) > 0) {
+      for (param_name in names(base_rate_params)) {
+        stage_name_to_mod <- sub("_base_rate$", "", param_name)
+        new_rate <- base_rate_params[[param_name]]
+
+        for (i in seq_along(temp_policy$simulation_stages)) {
+          if (temp_policy$simulation_stages[[i]]$name == stage_name_to_mod &&
+            temp_policy$simulation_stages[[i]]$type == "rate") {
+            temp_policy$simulation_stages[[i]]$base_rate <- new_rate
+          }
+        }
+      }
     }
 
     # --- Run Simulation & Summarize ---

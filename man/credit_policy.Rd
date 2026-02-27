@@ -4,6 +4,7 @@
 \alias{credit_policy}
 \alias{stress_aggravation}
 \alias{stress_monotonic_increase}
+\alias{stress_custom}
 \title{Constructor for the credit_policy S3 class}
 \usage{
 credit_policy(
@@ -24,6 +25,8 @@ stress_monotonic_increase(
   score_col,
   method = "linear"
 )
+
+stress_custom(func)
 }
 \arguments{
 \item{applicant_id_col}{The column with the unique applicant ID.}
@@ -54,6 +57,8 @@ created with \code{stress_aggravation()} or \code{stress_monotonic_increase()}.}
 \item{score_col}{For \code{stress_monotonic_increase}, the score column to which the monotonic trend applies.}
 
 \item{method}{For \code{stress_monotonic_increase}, the interpolation method (currently only "linear" is supported).}
+
+\item{func}{For \code{stress_custom}, an arbitrary R function that takes the \code{data} frame of swap-ins and returns a numeric vector with probabilities.}
 }
 \value{
 A \code{credit_policy} object.

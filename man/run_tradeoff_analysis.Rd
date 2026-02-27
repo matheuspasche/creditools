@@ -47,6 +47,8 @@ the names of the parameters in \code{vary_params}:
 \code{stage_cutoff} for that score.
 \item A parameter named \code{aggravation_factor} will create or modify a
 \code{stress_aggravation} scenario.
+\item A parameter named \verb{<stage_name>_base_rate} will dynamically update the
+\code{base_rate} of an existing \code{stage_rate} matching that name.
 }
 
 This allows for complex sensitivity analyses (e.g., creating an "efficient
