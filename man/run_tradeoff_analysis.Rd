@@ -4,7 +4,13 @@
 \alias{run_tradeoff_analysis}
 \title{Run a flexible trade-off analysis simulation}
 \usage{
-run_tradeoff_analysis(data, base_policy, vary_params, parallel = FALSE)
+run_tradeoff_analysis(
+  data,
+  base_policy,
+  vary_params,
+  parallel = FALSE,
+  quiet = FALSE
+)
 }
 \arguments{
 \item{data}{A data frame containing the analytical base table.}
@@ -18,6 +24,8 @@ a grid of all combinations of these parameters. For example:
 
 \item{parallel}{A logical flag. If \code{TRUE}, the simulation runs in parallel
 using \code{furrr}. Defaults to \code{FALSE}.}
+
+\item{quiet}{Whether to suppress progress and status messages. Default is FALSE.}
 }
 \value{
 A data frame (tibble) summarizing the results for each parameter

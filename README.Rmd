@@ -46,7 +46,7 @@ Here is a quick walk-through of the main workflow.
 
 First, we'll generate a sample dataset. `creditools` provides a handy function for this.
 
-```{r example-setup}
+```{r example-setup, message=FALSE, warning=FALSE}
 library(creditools)
 library(dplyr)
 library(ggplot2)
@@ -59,7 +59,7 @@ sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
 
 Let's analyze the impact of switching to `new_score`. We want to test different cutoffs for this score and see how the results change under different default rate stress scenarios for the newly approved population (`swap-ins`).
 
-```{r example-tradeoff}
+```{r example-tradeoff, message=FALSE, warning=FALSE}
 # Define a base policy. Stages and stresses will be added dynamically.
 base_policy <- credit_policy(
   applicant_id_col = "id",

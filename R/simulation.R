@@ -16,6 +16,8 @@
 #' @family simulation
 #' @export
 #'
+#' @param quiet Whether to suppress progress and status messages. Default is FALSE.
+#'
 #' @examples
 #' # 1. Generate sample data
 #' sample_data <- generate_sample_data(n_applicants = 1000, seed = 42)
@@ -42,7 +44,7 @@
 #'
 #' # 4. Summarize the results by scenario
 #' summarize_results(results)
-run_simulation <- function(data, policy) {
+run_simulation <- function(data, policy, quiet = FALSE) {
   validate_simulation_inputs(data, policy)
 
   # This will hold the logical vector of approvals at each stage
@@ -59,14 +61,14 @@ run_simulation <- function(data, policy) {
       is_eligible <- rep(TRUE, nrow(data))
     } else {
       # Get the logical vectors for all previous stages, handling NAs
-      prev_approvals <- purrr::map(data[unlist(stage_approval_cols[1:(i-1)])], function(col) col == 1 & !is.na(col))
+      prev_approvals <- purrr::map(data[unlist(stage_approval_cols[1:(i - 1)])], function(col) col == 1 & !is.na(col))
       is_eligible <- Reduce(`&`, prev_approvals)
     }
 
     # Simulate the current stage ONLY for the eligible population
     data[[stage_output_col]] <- NA_integer_
     if (any(is_eligible)) {
-       data[is_eligible, stage_output_col] <- simulate_stage(data[is_eligible, ], stage, policy)
+      data[is_eligible, stage_output_col] <- simulate_stage(data[is_eligible, ], stage, policy)
     }
   }
 
@@ -80,7 +82,7 @@ run_simulation <- function(data, policy) {
   # Assign default outcomes for the newly approved population
   data <- assign_simulated_defaults(data, policy)
 
-  cli::cli_alert_success("Multi-stage simulation completed for {nrow(data)} applicants.")
+  if (!quiet) cli::cli_alert_success("Multi-stage simulation completed for {nrow(data)} applicants.")
 
   # Structure the output
   results <- structure(
@@ -131,7 +133,7 @@ simulate_stage.stage_rate <- function(data, stage, policy) {
 
     keep_in_idx <- which(is_original_approved & has_observed_outcome)
 
-    if(length(keep_in_idx) > 0) {
+    if (length(keep_in_idx) > 0) {
       stage_outcome[keep_in_idx] <- 1
     }
 
@@ -249,12 +251,14 @@ simulate_swap_in_defaults <- function(data, policy) {
   }
 
   # Calculate probability for each stress scenario
-  prob_matrix <- purrr::map_dfc(policy$stress_scenarios, function(scenario) {
-    switch(scenario$type,
-           "aggravation" = calc_prob_aggravation(data, policy, scenario),
-           "monotonic_increase" = calc_prob_monotonic(swap_ins, scenario$score_col, scenario),
-           cli::cli_abort("Unknown stress scenario type: {scenario$type}")
+  prob_matrix <- purrr::map_dfc(seq_along(policy$stress_scenarios), function(seq_idx) {
+    scenario <- policy$stress_scenarios[[seq_idx]]
+    res <- switch(scenario$type,
+      "aggravation" = calc_prob_aggravation(data, policy, scenario),
+      "monotonic_increase" = calc_prob_monotonic(swap_ins, scenario$score_col, scenario),
+      cli::cli_abort("Unknown stress scenario type: {scenario$type}")
     )
+    tibble::tibble(!!paste0("prob_", seq_idx) := res)
   })
 
   # For each applicant, take the highest (most conservative) probability

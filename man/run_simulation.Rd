@@ -4,7 +4,7 @@
 \alias{run_simulation}
 \title{Run a credit policy simulation with multiple stages}
 \usage{
-run_simulation(data, policy)
+run_simulation(data, policy, quiet = FALSE)
 }
 \arguments{
 \item{data}{A data frame containing applicant data. Must include columns
@@ -12,6 +12,8 @@ specified in the \code{credit_policy} object.}
 
 \item{policy}{A \code{credit_policy} object created by \code{credit_policy()}, with
 a list of stages created by \code{stage_cutoff()} or \code{stage_rate()}.}
+
+\item{quiet}{Whether to suppress progress and status messages. Default is FALSE.}
 }
 \value{
 A \code{credit_sim_results} object, which is a list containing the
