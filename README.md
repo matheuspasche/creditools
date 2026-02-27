@@ -7,7 +7,6 @@
 
 [![Lifecycle:
 experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
-[![R-CMD-check](https://github.com/matheuspasche/creditools/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/matheuspasche/creditools/actions/workflows/R-CMD-check.yaml)
 <!-- badges: end -->
 
 The goal of `creditools` is to provide a flexible and powerful framework
@@ -169,19 +168,19 @@ tradeoff_results <- run_tradeoff_analysis(
 #> 
 #> v Multi-stage simulation completed for 20000 applicants.
 #> =========================>----- 85% | ETA: 0s
-#> ===========================>--- 91% | ETA: 0s
 #> New names:
 #> 
 #> v Multi-stage simulation completed for 20000 applicants.
-#> ===========================>--- 91% | ETA: 0s
+#> =========================>----- 85% | ETA: 0s
+#> ============================>-- 94% | ETA: 0s
 #> New names:
 #> 
 #> v Multi-stage simulation completed for 20000 applicants.
-#> ===========================>--- 91% | ETA: 0s
+#> ============================>-- 94% | ETA: 0s
 #> New names:
 #> 
 #> v Multi-stage simulation completed for 20000 applicants.
-#> ===========================>--- 91% | ETA: 0s
+#> ============================>-- 94% | ETA: 0s
 #> 
 #> v All simulations complete.
 #> * `` -> `...1`
