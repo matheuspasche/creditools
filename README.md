@@ -81,20 +81,20 @@ filter, an anti-fraud engine, and finally, a conversion rate probability
 
 ``` r
 # Stage 1: Credit decision (Approval driven by a Score Cutoff)
-credit_stage <- stage_cutoff(
+credit_stage <- creditools::stage_cutoff(
   name = "credit_decision",
   cutoffs = list(new_score = 600) # This will be dynamically varied later
 )
 
 # Stage 2: Anti-fraud model (Flat 95% generic pass rate)
-antifraud_stage <- stage_rate(
+antifraud_stage <- creditools::stage_rate(
   name = "anti_fraud",
   base_rate = 0.95
 )
 
 # Stage 3: Conversion rate (Monotonically decreasing with score)
 # Worst scores have a robust conversion rate (need credit), best scores have lower rate.
-conversion_stage <- stage_rate(
+conversion_stage <- creditools::stage_rate(
   name = "conversion",
   base_rate = 0.70, # Baseline, overriding dynamically 
   stress_by_score = list(
@@ -105,7 +105,7 @@ conversion_stage <- stage_rate(
 )
 
 # Create the full policy object
-base_policy <- credit_policy(
+base_policy <- creditools::credit_policy(
   applicant_id_col = "id",
   score_cols = c("old_score", "new_score"),
   current_approval_col = "approved",
@@ -136,7 +136,7 @@ vary_params <- list(
 
 # Run the parallel analysis!
 # `run_tradeoff_analysis` intercepts names like `*_base_rate` to dynamically override Funnel Stages
-tradeoff_results <- run_tradeoff_analysis(
+tradeoff_results <- creditools::run_tradeoff_analysis(
   data = sample_data,
   base_policy = base_policy,
   vary_params = vary_params,
@@ -148,12 +148,12 @@ head(tradeoff_results)
 #> # A tibble: 6 x 4
 #>   new_score_cutoff aggravation_factor approval_rate default_rate
 #>              <dbl>              <dbl>         <dbl>        <dbl>
-#> 1              450                1.2         0.286       0.0773
-#> 2              450                1.5         0.286       0.0821
-#> 3              450                1.7         0.286       0.0859
-#> 4              500                1.2         0.286       0.0775
-#> 5              500                1.5         0.286       0.0824
-#> 6              500                1.7         0.286       0.0857
+#> 1              450                1.2         0.286       0.0778
+#> 2              450                1.5         0.286       0.0826
+#> 3              450                1.7         0.286       0.0864
+#> 4              500                1.2         0.285       0.0777
+#> 5              500                1.5         0.286       0.0827
+#> 6              500                1.7         0.285       0.0861
 ```
 
 ### 4. Visualize the Results

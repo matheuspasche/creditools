@@ -266,16 +266,20 @@ run_tradeoff_analysis <- function(data,
     return(result_row)
   }
 
-  # Choose the mapping function based on the parallel flag
-  map_fun <- if (parallel) furrr::future_pmap_dfr else purrr::pmap_dfr
-
-  if (!quiet) cli::cli_alert_info("Running {nrow(params_grid)} simulations...")
-
-  simulation_outputs <- map_fun(
-    .l = params_grid,
-    .f = run_single_sim,
-    .progress = !quiet
-  )
+  simulation_outputs <- if (parallel) {
+    furrr::future_pmap_dfr(
+      .l = params_grid,
+      .f = run_single_sim,
+      .progress = !quiet,
+      .options = furrr::furrr_options(globals = TRUE, packages = c("creditools", "dplyr"))
+    )
+  } else {
+    purrr::pmap_dfr(
+      .l = params_grid,
+      .f = run_single_sim,
+      .progress = !quiet
+    )
+  }
 
   if (!quiet) cli::cli_alert_success("All simulations complete.")
 

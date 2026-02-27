@@ -69,20 +69,20 @@ A risk credit policy is rarely a single cutoff. We build a multi-stage funnel wh
 
 ```{r example-policy, message=FALSE, warning=FALSE}
 # Stage 1: Credit decision (Approval driven by a Score Cutoff)
-credit_stage <- stage_cutoff(
+credit_stage <- creditools::stage_cutoff(
   name = "credit_decision",
   cutoffs = list(new_score = 600) # This will be dynamically varied later
 )
 
 # Stage 2: Anti-fraud model (Flat 95% generic pass rate)
-antifraud_stage <- stage_rate(
+antifraud_stage <- creditools::stage_rate(
   name = "anti_fraud",
   base_rate = 0.95
 )
 
 # Stage 3: Conversion rate (Monotonically decreasing with score)
 # Worst scores have a robust conversion rate (need credit), best scores have lower rate.
-conversion_stage <- stage_rate(
+conversion_stage <- creditools::stage_rate(
   name = "conversion",
   base_rate = 0.70, # Baseline, overriding dynamically 
   stress_by_score = list(
@@ -93,7 +93,7 @@ conversion_stage <- stage_rate(
 )
 
 # Create the full policy object
-base_policy <- credit_policy(
+base_policy <- creditools::credit_policy(
   applicant_id_col = "id",
   score_cols = c("old_score", "new_score"),
   current_approval_col = "approved",
@@ -120,7 +120,7 @@ vary_params <- list(
 
 # Run the parallel analysis!
 # `run_tradeoff_analysis` intercepts names like `*_base_rate` to dynamically override Funnel Stages
-tradeoff_results <- run_tradeoff_analysis(
+tradeoff_results <- creditools::run_tradeoff_analysis(
   data = sample_data,
   base_policy = base_policy,
   vary_params = vary_params,
