@@ -9,12 +9,40 @@
 experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 <!-- badges: end -->
 
-The goal of `creditools` is to provide a flexible and powerful framework
-for simulating and analyzing credit policies. It allows risk analysts to
-model multi-stage decision funnels, simulate the impact of new
-strategies (e.g., changing score cutoffs), and analyze the trade-off
-between business metrics (like approval rate) and risk metrics (like
-default rate) under various stress scenarios.
+The goal of `creditools` is to put the computational power of an entire
+risk analytics team into a single, scalable R package. It provides a
+flexible framework for mathematically simulating and optimizing credit
+policies.
+
+Instead of spending weeks writing ad-hoc code to backtest a single
+credit score, `creditools` allows risk and business analysts to
+instantly model multi-stage decision funnels (Credit, Anti-fraud,
+Conversion), simulate the impact of new strategies, and discover the
+**Optimal Efficient Frontier** between approval volume and default
+rates.
+
+## Why creditools? (The Business Value)
+
+In modern credit risk management, finding the sweet spot of
+profitability requires testing endless permutations. `creditools` was
+designed to answer complex business questions in minutes:
+
+- **Test N-Scores Simultaneously:** Why validate one challenger score
+  when you can simulate 10 different scores at once? Find out exactly
+  which model yields the best risk-adjusted return.
+- **Find the Optimal Cutoff:** Extract the exact approval rates needed
+  to keep delinquency constant, or find the maximum possible delinquency
+  mitigation while holding your approval volume steady.
+- **Surgical Stress Testing (Swap-ins):** When approving new profiles,
+  delinquency doesn’t behave linearly. `creditools` lets you inject
+  custom stress scenarios (e.g., *increase PD by 20% for deciles 9 and
+  10, 50% for deciles 6-8, and 80% for the rest*).
+- **Preserve Funnel Conversion:** Easily lock empirical conversion and
+  activation rates by stage, ensuring your simulated business volumes
+  reflect real-world borrower behavior.
+- **Massive Scalability:** Under the hood, the engine supports `future`
+  parallel processing. Simulate millions of applicants across hundreds
+  of scenarios effortlessly.
 
 ## Installation
 
@@ -147,11 +175,11 @@ head(tradeoff_results)
 #> # A tibble: 6 x 4
 #>   new_score_cutoff aggravation_factor approval_rate default_rate
 #>              <dbl>              <dbl>         <dbl>        <dbl>
-#> 1              450                1.2         0.286       0.0780
-#> 2              450                1.5         0.286       0.0821
-#> 3              450                1.7         0.286       0.0863
-#> 4              500                1.2         0.285       0.0776
-#> 5              500                1.5         0.286       0.0826
+#> 1              450                1.2         0.286       0.0777
+#> 2              450                1.5         0.286       0.0832
+#> 3              450                1.7         0.286       0.0854
+#> 4              500                1.2         0.286       0.0775
+#> 5              500                1.5         0.286       0.0823
 #> 6              500                1.7         0.286       0.0860
 ```
 
