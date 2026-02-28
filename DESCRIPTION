@@ -1,6 +1,6 @@
 Package: creditools
 Title: A Toolkit for Credit Risk Simulation and Trade-Off Analysis
-Version: 0.2.0
+Version: 0.2.1
 Authors@R: 
     person("Matheus", "Pasche", email = "matheuspasche@outlook.com", role = c("aut", "cre", "cph"))
 Description: Provides a comprehensive suite of tools for forward-looking credit

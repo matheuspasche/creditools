@@ -1,3 +1,5 @@
+# creditools 0.2.1
+
 # creditools 0.2.0
 
 * Implemented `stress_custom(func)` to allow arbitrary closure behavior over simulation engine.
