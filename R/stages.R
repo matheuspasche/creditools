@@ -21,6 +21,9 @@ new_credit_policy_stage <- function(name, type, ...) {
 }
 
 
+#' Define a Cutoff Stage
+#' @name stage_cutoff
+#' @title Define a Cutoff Stage
 #' @description
 #' `stage_cutoff()` defines a stage where approval is determined by one or more
 #' score cutoffs. An applicant passes if their score is >= the cutoff for all
@@ -31,7 +34,6 @@ new_credit_policy_stage <- function(name, type, ...) {
 #' @param observed_outcome_col The column in the original data that contains the
 #'   observed outcome for this stage (0 or 1), if it exists. Used for `keep_in` analysis.
 #'
-#' @rdname new_credit_policy_stage
 #' @export
 #' @examples
 #' # Defines a stage that requires a 'new_score' of at least 650
@@ -49,6 +51,9 @@ stage_cutoff <- function(name, cutoffs, observed_outcome_col = NULL) {
 }
 
 
+#' Define a Rate Stage
+#' @name stage_rate
+#' @title Define a Rate Stage
 #' @description
 #' `stage_rate()` defines a stage where "approval" (e.g., conversion, acceptance)
 #' is determined by a simulated rate. This is useful for stages that are not
@@ -60,7 +65,6 @@ stage_cutoff <- function(name, cutoffs, observed_outcome_col = NULL) {
 #' @param stress_by_score An optional named list to stress the `base_rate` based on a
 #'   score's value. Uses a monotonic increase assumption. See `stress_monotonic_increase()`.
 #'
-#' @rdname new_credit_policy_stage
 #' @export
 #' @examples
 #' # Defines a stage with a 95% pass rate (e.g., for fraud checks)

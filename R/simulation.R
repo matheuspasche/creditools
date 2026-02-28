@@ -201,13 +201,11 @@ validate_simulation_inputs <- function(data, policy) {
 #' Classify scenarios based on current and new approval decisions
 #' @keywords internal
 classify_scenarios <- function(data, policy, new_approval_col) {
-  current_approval_col <- policy$current_approval_col
-
   data$scenario <- dplyr::case_when(
-    data[[current_approval_col]] == 0 & data[[new_approval_col]] == TRUE ~ "swap_in",
-    data[[current_approval_col]] == 1 & data[[new_approval_col]] == FALSE ~ "swap_out",
-    data[[current_approval_col]] == 1 & data[[new_approval_col]] == TRUE ~ "keep_in",
-    data[[current_approval_col]] == 0 & data[[new_approval_col]] == FALSE ~ "keep_out",
+    data[[policy$current_approval_col]] == 0 & data[[new_approval_col]] == TRUE ~ "swap_in",
+    data[[policy$current_approval_col]] == 1 & data[[new_approval_col]] == FALSE ~ "swap_out",
+    data[[policy$current_approval_col]] == 1 & data[[new_approval_col]] == TRUE ~ "keep_in",
+    data[[policy$current_approval_col]] == 0 & data[[new_approval_col]] == FALSE ~ "keep_out",
     TRUE ~ NA_character_
   )
 
@@ -247,7 +245,13 @@ simulate_swap_in_defaults <- function(data, policy) {
 
   if (length(policy$stress_scenarios) == 0) {
     cli::cli_alert_warning("No stress scenarios defined for swap-in defaults. Default outcomes will be NA.")
-    return(tibble::tibble(!!policy$applicant_id_col := swap_ins[[policy$applicant_id_col]], swap_in_default = NA_integer_))
+
+    res_df <- tibble::tibble(
+      tmp_id = swap_ins[[policy$applicant_id_col]],
+      swap_in_default = NA_integer_
+    )
+    colnames(res_df)[1] <- policy$applicant_id_col
+    return(res_df)
   }
 
   # Calculate probability for each stress scenario
@@ -256,9 +260,12 @@ simulate_swap_in_defaults <- function(data, policy) {
     res <- switch(scenario$type,
       "aggravation" = calc_prob_aggravation(data, policy, scenario),
       "monotonic_increase" = calc_prob_monotonic(swap_ins, scenario$score_col, scenario),
+      "custom" = scenario$func(swap_ins),
       cli::cli_abort("Unknown stress scenario type: {scenario$type}")
     )
-    tibble::tibble(!!paste0("prob_", seq_idx) := res)
+    df <- tibble::tibble(res)
+    colnames(df) <- paste0("prob_", seq_idx)
+    return(df)
   })
 
   # For each applicant, take the highest (most conservative) probability
@@ -270,10 +277,12 @@ simulate_swap_in_defaults <- function(data, policy) {
   # Simulate default based on the final probability
   simulated_outcomes <- as.integer(stats::runif(length(final_prob)) < final_prob)
 
-  tibble::tibble(
-    !!policy$applicant_id_col := swap_ins[[policy$applicant_id_col]],
+  res_df <- tibble::tibble(
+    tmp_id = swap_ins[[policy$applicant_id_col]],
     swap_in_default = simulated_outcomes
   )
+  colnames(res_df)[1] <- policy$applicant_id_col
+  return(res_df)
 }
 
 #' Calculate default probability based on aggravation
@@ -291,17 +300,18 @@ calc_prob_aggravation <- function(data, policy, scenario) {
     return(rep(agg_rate, nrow(data[data$scenario == "swap_in" & !is.na(data$scenario), ])))
   }
 
-  # Grouped aggravation
-  baseline_rates <- keep_ins %>%
-    dplyr::group_by(dplyr::across(dplyr::all_of(group_vars))) %>%
-    dplyr::summarise(baseline_rate = mean(.data[[policy$actual_default_col]], na.rm = TRUE), .groups = "drop")
+  # Grouped aggravation (No pipe to avoid linter warnings)
+  baseline_rates <- dplyr::summarise(
+    dplyr::group_by(keep_ins, dplyr::across(dplyr::all_of(group_vars))),
+    baseline_rate = mean(!!rlang::sym(policy$actual_default_col), na.rm = TRUE),
+    .groups = "drop"
+  )
 
   agg_factor <- scenario$factor
 
-  swap_ins <- data %>%
-    dplyr::filter(.data$scenario == "swap_in" & !is.na(.data$scenario)) %>%
-    dplyr::left_join(baseline_rates, by = group_vars) %>%
-    dplyr::mutate(agg_rate = .data$baseline_rate * agg_factor)
+  swap_ins <- data[data$scenario == "swap_in" & !is.na(data$scenario), ]
+  swap_ins <- dplyr::left_join(swap_ins, baseline_rates, by = group_vars)
+  swap_ins$agg_rate <- swap_ins$baseline_rate * agg_factor
 
   if (anyNA(swap_ins$agg_rate)) {
     global_baseline <- mean(keep_ins[[policy$actual_default_col]], na.rm = TRUE)

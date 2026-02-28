@@ -77,10 +77,10 @@ credit_policy <- function(applicant_id_col,
     simulation_stages = simulation_stages,
     stress_scenarios = stress_scenarios
   )
-  
+
   # The validator is now mostly for internal consistency checks
   validate_credit_policy(policy)
-  
+
   return(policy)
 }
 
@@ -112,6 +112,22 @@ stress_monotonic_increase <- function(rate_at_min, rate_at_max, score_col, metho
   )
 }
 
+#' @rdname credit_policy
+#' @param func For `stress_custom`, an arbitrary R function that takes the `data` frame of swap-ins and returns a numeric vector with probabilities.
+#' @export
+stress_custom <- function(func) {
+  if (!is.function(func)) {
+    cli::cli_abort("{.arg func} must be an R function that takes a data frame and returns a numeric vector of probabilities/rates.")
+  }
+  structure(
+    list(
+      type = "custom",
+      func = func
+    ),
+    class = "stress_scenario"
+  )
+}
+
 #' Low-level constructor for the `credit_policy` class
 #' @keywords internal
 new_credit_policy <- function(applicant_id_col = character(),
@@ -121,7 +137,6 @@ new_credit_policy <- function(applicant_id_col = character(),
                               risk_level_col = NULL,
                               simulation_stages = list(),
                               stress_scenarios = list()) {
-  
   structure(
     list(
       applicant_id_col = applicant_id_col,
@@ -142,30 +157,30 @@ validate_credit_policy <- function(policy) {
   if (!inherits(policy, "credit_policy")) {
     cli::cli_abort("Input must be of class {.cls credit_policy}.")
   }
-  
+
   required_fields <- c("applicant_id_col", "score_cols", "current_approval_col", "actual_default_col")
   for (field in required_fields) {
     if (is.null(policy[[field]]) || length(policy[[field]]) == 0) {
       cli::cli_abort("Policy field {.arg {field}} is missing or empty.")
     }
   }
-  
+
   if (length(policy$stress_scenarios) > 0) {
     if (!is.list(policy$stress_scenarios) || !all(purrr::map_lgl(policy$stress_scenarios, inherits, "stress_scenario"))) {
-      cli::cli_abort("{.arg stress_scenarios} must be a list of objects from {.fn stress_aggravation} or {.fn stress_monotonic_increase}.")
+      cli::cli_abort("{.arg stress_scenarios} must be a list of objects from {.fn stress_aggravation}, {.fn stress_monotonic_increase}, or {.fn stress_custom}.")
     }
     is_agg_by <- purrr::map_lgl(policy$stress_scenarios, ~ .x$type == "aggravation" && !is.null(.x$by))
     if (any(is_agg_by) && is.null(policy$risk_level_col)) {
       cli::cli_abort("A {.arg risk_level_col} must be provided in the policy when using {.code by} in {.fn stress_aggravation}.")
     }
   }
-  
+
   if (length(policy$simulation_stages) > 0) {
     if (!is.list(policy$simulation_stages) || !all(purrr::map_lgl(policy$simulation_stages, inherits, "credit_policy_stage"))) {
       cli::cli_abort("{.arg simulation_stages} must be a list of objects from {.fn stage_cutoff} or {.fn stage_rate}.")
     }
   }
-  
+
   return(invisible(policy))
 }
 
@@ -180,10 +195,9 @@ print.credit_policy <- function(x, ...) {
     "*" = "Score Columns: {x$score_cols}",
     "*" = "Current Approval: {.field {x$current_approval_col}}",
     "*" = "Actual Default: {.field {x$actual_default_col}}",
-    if (!is.null(x$risk_level_col)) "*" = "Risk Stratification: {.field {x$risk_level_col}}",
+    if (!is.null(x$risk_level_col)) "*" <- "Risk Stratification: {.field {x$risk_level_col}}",
     "*" = "{length(x$simulation_stages)} simulation stage(s) defined",
     "*" = "{length(x$stress_scenarios)} stress scenario(s) defined"
   ))
   invisible(x)
 }
-
