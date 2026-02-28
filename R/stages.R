@@ -29,6 +29,7 @@ new_credit_policy_stage <- function(name, type, ...) {
 #' score cutoffs. An applicant passes if their score is >= the cutoff for all
 #' defined scores in this stage.
 #'
+#' @param name A character string for the name of the stage (e.g., "credit_check").
 #' @param cutoffs A named list where names are score columns and values are
 #'   the cutoffs to be applied.
 #' @param observed_outcome_col The column in the original data that contains the
@@ -59,6 +60,7 @@ stage_cutoff <- function(name, cutoffs, observed_outcome_col = NULL) {
 #' is determined by a simulated rate. This is useful for stages that are not
 #' score-based.
 #'
+#' @param name A character string for the name of the stage (e.g., "fraud_check").
 #' @param base_rate The base rate for the simulation (e.g., 0.4 for a 40% conversion rate).
 #' @param observed_outcome_col The column in the original data that contains the
 #'   observed outcome for this stage (0 or 1), if it exists.
