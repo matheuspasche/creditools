@@ -119,7 +119,27 @@ base_policy <- creditools::credit_policy(
 )
 ```
 
-### 3. Run a Massively Parallel Trade-off Analysis
+### 3. Inspect a Single Simulation (Granular Audit)
+
+Before running massive loops, you might want to audit exactly what happens to each individual applicant. The `run_simulation()` engine allows you to process a single policy and inspect the exact mathematical flags applied to every single row (e.g., did they pass the cutoff? did they convert? what is their simulated PD? did they default?).
+
+```{r example-single-sim, message=FALSE, warning=FALSE}
+# Run a single static pass of the policy over the 1.5M applicants
+single_run <- creditools::run_simulation(
+  data = sample_data, 
+  policy = base_policy,
+  quiet = TRUE
+)
+
+# Extract the granular data and inspect the first applicant who was a "Swap-In" (approved now, but rejected before)
+granular_base <- single_run$data
+granular_base %>% 
+  dplyr::filter(is_swap_in == TRUE) %>% 
+  dplyr::select(id, old_score, new_score, stage_pass_credit_decision, stage_pass_anti_fraud, new_approval, simulated_pd, simulated_default) %>%
+  head()
+```
+
+### 4. Run a Massively Parallel Trade-off Analysis
 
 We will define parameters to vary dynamically. We want to test different score cutoffs to see the "swap-in" effects, while also varying the base conversion rate and aggravating the default expectation for newly approved customers (a normal phenomena when exploring unsupervised score bands). 
 
@@ -143,7 +163,7 @@ tradeoff_results <- creditools::run_tradeoff_analysis(
 head(tradeoff_results)
 ```
 
-### 4. Visualize the Results
+### 5. Visualize the Results
 
 The results provide a data frame mapping out an efficient frontier. This clearly highlights how migrating to `new_score` mitigates default risk depending on the selected cutoff, and showcases the conservative aggravation impacts on business volume.
 

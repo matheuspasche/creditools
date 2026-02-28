@@ -7,6 +7,8 @@
 stage_cutoff(name, cutoffs, observed_outcome_col = NULL)
 }
 \arguments{
+\item{name}{A character string for the name of the stage (e.g., "credit_check").}
+
 \item{cutoffs}{A named list where names are score columns and values are
 the cutoffs to be applied.}
 

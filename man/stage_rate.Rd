@@ -12,6 +12,8 @@ stage_rate(
 )
 }
 \arguments{
+\item{name}{A character string for the name of the stage (e.g., "fraud_check").}
+
 \item{base_rate}{The base rate for the simulation (e.g., 0.4 for a 40\% conversion rate).}
 
 \item{observed_outcome_col}{The column in the original data that contains the
