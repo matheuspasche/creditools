@@ -259,7 +259,7 @@ run_tradeoff_analysis <- function(data,
     }
 
     # Combine params with results
-    result_row <- tibble::as_tibble(current_params)
+    result_row <- tibble::as_tibble_row(current_params)
     result_row$approval_rate <- overall_approval_rate
     result_row$default_rate <- avg_default_rate_approved
 

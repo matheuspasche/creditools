@@ -134,7 +134,7 @@ evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
                                          target_default_rate, min_approval_rate,
                                          parallel = FALSE, n_cores = NULL) {
   cutoff_combinations <- expand.grid(cutoff_ranges) %>%
-    tibble::as_tibble() %>%
+    tibble::as_tibble(.name_repair = "unique_quiet") %>%
     dplyr::mutate(combination_id = dplyr::row_number())
 
   cli::cli_alert_info("Evaluating {nrow(cutoff_combinations)} cutoff combinations...")
@@ -196,7 +196,7 @@ evaluate_single_combination <- function(combo_id, cutoff_combinations, data, con
   )
 
   # Add cutoff values to the result row
-  result_row <- dplyr::bind_cols(result_row, tibble::as_tibble(cutoffs))
+  result_row <- dplyr::bind_cols(result_row, tibble::as_tibble(cutoffs, .name_repair = "unique_quiet"))
 
   return(result_row)
 }

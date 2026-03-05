@@ -50,8 +50,14 @@ run_simulation <- function(data, policy, quiet = FALSE) {
   # This will hold the logical vector of approvals at each stage
   stage_approval_cols <- list()
 
+  if (!quiet && length(policy$simulation_stages) > 0) {
+    pb <- cli::cli_progress_bar("Simulating funnel stages", total = length(policy$simulation_stages))
+  }
+
   # Sequentially process each stage in the funnel
   for (i in seq_along(policy$simulation_stages)) {
+    if (!quiet) cli::cli_progress_update(id = pb)
+
     stage <- policy$simulation_stages[[i]]
     stage_output_col <- paste0("approved_", stage$name, "_new")
     stage_approval_cols[[i]] <- stage_output_col
@@ -71,6 +77,8 @@ run_simulation <- function(data, policy, quiet = FALSE) {
       data[is_eligible, stage_output_col] <- simulate_stage(data[is_eligible, ], stage, policy)
     }
   }
+
+  if (!quiet && exists("pb")) cli::cli_progress_done(id = pb)
 
   # Determine final approval status under the new policy
   final_approval_flags <- purrr::map(data[unlist(stage_approval_cols)], function(col) col == 1 & !is.na(col))
@@ -170,6 +178,39 @@ simulate_stage.stage_rate <- function(data, stage, policy) {
   return(stage_outcome)
 }
 
+#' Simulate a hard-filter stage (Binary Rules)
+#' @keywords internal
+simulate_stage.stage_filter <- function(data, stage, policy) {
+  # Evaluate the string condition against the subset of eligible data
+  # using base R eval to allow things like "idade > 18 & status == 'Válido'"
+  tryCatch(
+    {
+      # Parse and evaluate inside the isolated data environment
+      eval_result <- eval(parse(text = stage$condition), envir = data)
+
+      # Convert to logical and handle unexpected outputs
+      if (!is.logical(eval_result)) {
+        cli::cli_abort("Condition '{stage$condition}' did not return a logical vector.")
+      }
+
+      # Handle NAs (treat as rejection if the evaluation produces NA)
+      eval_result[is.na(eval_result)] <- FALSE
+
+      # Return as integer (1 = Passed, 0 = Rejected)
+      return(as.integer(eval_result))
+    },
+    error = function(e) {
+      cli::cli_abort(
+        c(
+          "Failed to evaluate filter condition '{stage$condition}' in stage '{stage$name}'.",
+          "x" = "Error message: {e$message}",
+          "i" = "Ensure all referenced variables exist in the applicant data."
+        )
+      )
+    }
+  )
+}
+
 #' Default simulator for unknown stage types
 #' @keywords internal
 simulate_stage.default <- function(data, stage, policy) {
@@ -263,9 +304,8 @@ simulate_swap_in_defaults <- function(data, policy) {
       "custom" = scenario$func(swap_ins),
       cli::cli_abort("Unknown stress scenario type: {scenario$type}")
     )
-    df <- tibble::tibble(res)
-    colnames(df) <- paste0("prob_", seq_idx)
-    return(df)
+    col_name <- paste0("prob_", seq_idx)
+    tibble::tibble(!!col_name := res)
   })
 
   # For each applicant, take the highest (most conservative) probability

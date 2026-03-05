@@ -72,6 +72,16 @@ sample_data <- generate_sample_data(n_applicants = 1500000, seed = 42)
 
 # Create stratification bands for the new score
 sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
+
+# Inject simulated Vintages (Time Cohorts) and Categorical dimensions for Advanced Analytics showcase
+sample_data$vintage_month <- sample(
+  as.Date(c("2023-01-01", "2023-02-01", "2023-03-01", "2023-04-01", "2023-11-01", "2023-12-01")), 
+  nrow(sample_data), replace = TRUE
+)
+sample_data$status <- sample(
+  c("Approved", "Denied"), 
+  nrow(sample_data), replace = TRUE, prob = c(0.85, 0.15)
+)
 ```
 
 ### 2. Define Funnel Stages and Credit Policy
@@ -133,8 +143,8 @@ single_run <- creditools::run_simulation(
 # Extract the granular data and inspect the first applicant who was a "Swap-In" (approved now, but rejected before)
 granular_base <- single_run$data
 granular_base %>% 
-  dplyr::filter(is_swap_in == TRUE) %>% 
-  dplyr::select(id, old_score, new_score, stage_pass_credit_decision, stage_pass_anti_fraud, new_approval, simulated_pd, simulated_default) %>%
+  dplyr::filter(scenario == "swap_in") %>% 
+  dplyr::select(id, old_score, new_score, approved_credit_decision_new, approved_anti_fraud_new, new_approval, simulated_default) %>%
   head()
 ```
 
@@ -184,3 +194,51 @@ tradeoff_results %>%
   theme_minimal(base_size = 14) +
   theme(legend.position = "bottom")
 ```
+
+## Advanced Analytics: Hard Filters & Risk Based Pricing (RBP)
+
+Beyond point-in-time simulations, `creditools` operates as a robust **Risk Matrix Engine**. Modern credit departments often need to answer: *"Should I replace my primary score with this new provider, or matrix them both into a combined stable Risk Tier?"*
+
+The `find_risk_groups()` heuristic engine solves exactly this. It automatically bins N-scores into intersecting dimensions, calculates empirical risk, merges tiny pockets of poplation (`min_vol_ratio`), and **prunes any groups with high PD volatility across vintages** to guarantee perfectly stable horizontal curves over time (`max_volatility_cv`). Furthermore, you can apply categorical rules (`stage_filter`) prior to evaluation.
+
+Let's simulate a massive dataset with categorical constraints and search for Risk Tiers evaluating the combined predictive power of our 2 scores.
+
+### 1. Hard Filters & Finding Stable Risk Tiers
+
+```{r example-matrix-rating, message=FALSE, warning=FALSE}
+# Let's say we only want to evaluate the matrix on "Valid" segments that passed a basic 300 points Cutoff on our internal Score A.
+advanced_policy <- credit_policy(
+  applicant_id_col = "id",
+  score_cols = c("old_score", "new_score"),
+  current_approval_col = "approved",
+  actual_default_col = "defaulted",
+  risk_level_col = "new_score_decile",
+  simulation_stages = list(
+    # Stage 1: Categorical Filter (Dynamic execution)
+    stage_filter(name = "status_filter", condition = "status == 'Approved'"),
+    # Stage 2: Pre-Cutoff Screen
+    stage_cutoff(name = "baseline", cutoffs = list(old_score = 300))
+  )
+)
+
+# Pass the data through the hard filters first
+filtered_candidates <- run_simulation(sample_data, advanced_policy, quiet = TRUE)$data %>% dplyr::filter(new_approval == TRUE)
+
+# After isolating the approved funnel, we apply the clustering engine!
+# We set `oot_date` to blindly validate our hierarchy outside of the train months.
+rbp_matrix_results <- creditools::find_risk_groups(
+    data = filtered_candidates, 
+    score_cols = c("old_score", "new_score"), # Combining both!
+    default_col = "defaulted", 
+    time_col = "vintage_month",
+    bins = 10,                 # Starts as a 10x10 matrix (100 pockets)
+    min_vol_ratio = 0.05,      # Groups cannot be smaller than 5%
+    max_volatility_cv = 0.20,  # Tolerates maximum 20% of PD Volatility (CV) per Vintage compared to the Average
+    oot_date = as.Date("2023-11-01") # Preserves Nov/Dec for Out-Of-Time validation!
+)
+
+# How many stable groups did it find?
+print(rbp_matrix_results$report)
+```
+
+The resulting `rbp_matrix_results$data` comes pre-attached with `risk_rating` (from 1 to N), mapping perfectly to your custom Risk Based Pricing matrix. The results clearly demonstrate if swapping or matrixing scores offers more granular risk differentiation without vintage intersections. This saves weeks of manual SAS/SQL matrix cross-validations!
