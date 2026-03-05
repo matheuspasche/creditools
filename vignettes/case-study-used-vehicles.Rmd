@@ -422,12 +422,14 @@ ggplot(stab_all, aes(x = month, y = pd, color = factor(risk_rating), group = fac
 ```{r export}
 export <- sim_B$data %>%
   select(id, current_score, new_score, age, neg_registry, vintage,
-         approved, defaulted, scenario, new_approval, simulated_default) %>%
+         approved, defaulted, scenario, 
+         approved_credit_decision_new, approved_anti_fraud_new, approved_conversion_new,
+         new_approval, simulated_default) %>%
   left_join(rg_B$data %>% select(id, risk_rating_new_score = risk_rating), by = "id") %>%
   left_join(rg_M$data %>% select(id, risk_rating_matrix = risk_rating), by = "id")
 
 readr::write_csv(export, file.path(getwd(), "case_study_base_export.csv"))
-cat("Exported:", format(nrow(export), big.mark=","), "rows, with final risk groups, to case_study_base_export.csv\n")
+cat("Exported:", format(nrow(export), big.mark=","), "rows, with final risk groups and funnel stage flags, to case_study_base_export.csv\n")
 ```
 
 ---
