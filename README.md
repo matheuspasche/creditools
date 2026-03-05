@@ -97,6 +97,16 @@ sample_data <- generate_sample_data(n_applicants = 1500000, seed = 42)
 
 # Create stratification bands for the new score
 sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
+
+# Inject simulated Vintages (Time Cohorts) and Categorical dimensions for Advanced Analytics showcase
+sample_data$vintage_month <- sample(
+  c("2023-01", "2023-02", "2023-03", "2023-04", "2023-11", "2023-12"), 
+  nrow(sample_data), replace = TRUE
+)
+sample_data$status <- sample(
+  c("Approved", "Denied"), 
+  nrow(sample_data), replace = TRUE, prob = c(0.85, 0.15)
+)
 ```
 
 ### 2. Define Funnel Stages and Credit Policy
@@ -146,7 +156,41 @@ base_policy <- creditools::credit_policy(
 )
 ```
 
-### 3. Run a Massively Parallel Trade-off Analysis
+### 3. Inspect a Single Simulation (Granular Audit)
+
+Before running massive loops, you might want to audit exactly what
+happens to each individual applicant. The `run_simulation()` engine
+allows you to process a single policy and inspect the exact mathematical
+flags applied to every single row (e.g., did they pass the cutoff? did
+they convert? what is their simulated PD? did they default?).
+
+``` r
+# Run a single static pass of the policy over the 1.5M applicants
+single_run <- creditools::run_simulation(
+  data = sample_data, 
+  policy = base_policy,
+  quiet = TRUE
+)
+
+# Extract the granular data and inspect the first applicant who was a "Swap-In" (approved now, but rejected before)
+granular_base <- single_run$data
+granular_base %>% 
+  dplyr::filter(scenario == "swap_in") %>% 
+  dplyr::select(id, old_score, new_score, approved_credit_decision_new, approved_anti_fraud_new, new_approval, simulated_default) %>%
+  head()
+#> # A tibble: 6 x 7
+#>      id old_score new_score approved_credit_decision_new approved_anti_fraud_new
+#>   <int>     <dbl>     <dbl>                        <int>                   <int>
+#> 1     4       346       913                            1                       1
+#> 2    29       417       775                            1                       1
+#> 3    35       271       663                            1                       1
+#> 4    66       422       964                            1                       1
+#> 5    70       240       775                            1                       1
+#> 6    83       393       827                            1                       1
+#> # i 2 more variables: new_approval <lgl>, simulated_default <int>
+```
+
+### 4. Run a Massively Parallel Trade-off Analysis
 
 We will define parameters to vary dynamically. We want to test different
 score cutoffs to see the “swap-in” effects, while also varying the base
@@ -175,15 +219,15 @@ head(tradeoff_results)
 #> # A tibble: 6 x 4
 #>   new_score_cutoff aggravation_factor approval_rate default_rate
 #>              <dbl>              <dbl>         <dbl>        <dbl>
-#> 1              450                1.2         0.286       0.0777
-#> 2              450                1.5         0.286       0.0832
-#> 3              450                1.7         0.286       0.0854
-#> 4              500                1.2         0.286       0.0775
-#> 5              500                1.5         0.286       0.0823
-#> 6              500                1.7         0.286       0.0860
+#> 1              450                1.2         0.286       0.0781
+#> 2              450                1.5         0.286       0.0828
+#> 3              450                1.7         0.285       0.0865
+#> 4              500                1.2         0.285       0.0776
+#> 5              500                1.5         0.286       0.0828
+#> 6              500                1.7         0.286       0.0866
 ```
 
-### 4. Visualize the Results
+### 5. Visualize the Results
 
 The results provide a data frame mapping out an efficient frontier. This
 clearly highlights how migrating to `new_score` mitigates default risk
@@ -210,3 +254,81 @@ tradeoff_results %>%
 ```
 
 <img src="man/figures/README-example-plot-1.png" width="100%" />
+
+## Advanced Analytics: Hard Filters & Risk Based Pricing (RBP)
+
+Beyond point-in-time simulations, `creditools` operates as a robust
+**Risk Matrix Engine**. Modern credit departments often need to answer:
+*“Should I replace my primary score with this new provider, or matrix
+them both into a combined stable Risk Tier?”*
+
+The `find_risk_groups()` heuristic engine solves exactly this. It
+automatically bins N-scores into intersecting dimensions, calculates
+empirical risk, merges tiny pockets of poplation (`min_vol_ratio`), and
+**prunes any groups with high PD volatility across vintages** to
+guarantee perfectly stable horizontal curves over time
+(`max_volatility_cv`). Furthermore, you can apply categorical rules
+(`stage_filter`) prior to evaluation.
+
+Let’s simulate a massive dataset with categorical constraints and search
+for Risk Tiers evaluating the combined predictive power of our 2 scores.
+
+### 1. Hard Filters & Finding Stable Risk Tiers
+
+``` r
+# Let's say we only want to evaluate the matrix on "Valid" segments that passed a basic 300 points Cutoff on our internal Score A.
+advanced_policy <- credit_policy(
+  applicant_id_col = "id",
+  score_cols = c("old_score", "new_score"),
+  current_approval_col = "approved",
+  actual_default_col = "defaulted",
+  risk_level_col = "new_score_decile",
+  simulation_stages = list(
+    # Stage 1: Categorical Filter (Dynamic execution)
+    stage_filter(name = "status_filter", condition = "status == 'Approved'"),
+    # Stage 2: Pre-Cutoff Screen
+    stage_cutoff(name = "baseline", cutoffs = list(old_score = 300))
+  )
+)
+
+# Pass the data through the hard filters first
+filtered_candidates <- run_simulation(sample_data, advanced_policy, quiet = TRUE)$data %>% dplyr::filter(new_approval == TRUE)
+
+# After isolating the approved funnel, we apply the clustering engine!
+# We set `oot_date` to blindly validate our hierarchy outside of the train months.
+rbp_matrix_results <- creditools::find_risk_groups(
+    data = filtered_candidates, 
+    score_cols = c("old_score", "new_score"), # Combining both!
+    default_col = "defaulted", 
+    time_col = "vintage_month",
+    time_col_format = "%Y-%m", # Strict Date parsing
+    bins = 10,                 # Starts as a 10x10 matrix (100 pockets)
+    min_vol_ratio = 0.05,      # Groups cannot be smaller than 5%
+    max_volatility_cv = 0.20,  # Tolerates maximum 20% of PD Volatility (CV) per Vintage compared to the Average
+    oot_date = "2023-11"       # Preserves Nov/Dec for Out-Of-Time validation!
+)
+
+# How many stable groups did it find?
+print(rbp_matrix_results$report)
+#> # A tibble: 34 x 4
+#>    risk_rating period total_vol avg_pd
+#>          <int> <chr>      <int>  <dbl>
+#>  1           1 Train      37790 0.0512
+#>  2           2 Train      31530 0.0611
+#>  3           3 Train      38670 0.0655
+#>  4           4 Train      36900 0.0708
+#>  5           5 Train      30357 0.0751
+#>  6           6 Train      31291 0.0809
+#>  7           7 Train      33472 0.0839
+#>  8           8 Train      32069 0.0866
+#>  9           9 Train      36368 0.0880
+#> 10          10 Train      34651 0.0914
+#> # i 24 more rows
+```
+
+The resulting `rbp_matrix_results$data` comes pre-attached with
+`risk_rating` (from 1 to N), mapping perfectly to your custom Risk Based
+Pricing matrix. The results clearly demonstrate if swapping or matrixing
+scores offers more granular risk differentiation without vintage
+intersections. This saves weeks of manual SAS/SQL matrix
+cross-validations!

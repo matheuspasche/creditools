@@ -85,3 +85,34 @@ stage_rate <- function(name, base_rate, observed_outcome_col = NULL, stress_by_s
     stress_by_score = stress_by_score
   )
 }
+
+#' Define a Hard Filter Stage
+#' @name stage_filter
+#' @title Define a Hard Filter Stage
+#' @description
+#' `stage_filter()` defines a stage where approval is strictly determined by a
+#' logical condition string (e.g., `"idade >= 18"` or `"status == 'Válido'"`).
+#' Applicants who evaluate to `FALSE` are immediately rejected from the funnel.
+#'
+#' @param name A character string for the name of the stage (e.g., "age_rule").
+#' @param condition A character string representing the logical condition to be
+#'   evaluated dynamically over the applicant data. Variables used in the string
+#'   must exist in the data frame during simulation.
+#' @param observed_outcome_col The column in the original data that contains the
+#'   observed outcome for this stage (0 or 1), if it exists.
+#'
+#' @export
+#' @examples
+#' # Defines a stage that rejects anyone under 18 years old
+#' age_rule <- stage_filter(name = "age_check", condition = "age >= 18")
+stage_filter <- function(name, condition, observed_outcome_col = NULL) {
+  if (!is.character(condition) || length(condition) != 1) {
+    cli::cli_abort("{.arg condition} must be a single string representing a logical statement.")
+  }
+  new_credit_policy_stage(
+    name = name,
+    type = "filter",
+    condition = condition,
+    observed_outcome_col = observed_outcome_col
+  )
+}
