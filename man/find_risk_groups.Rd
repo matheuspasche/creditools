@@ -10,7 +10,7 @@ find_risk_groups(
   default_col,
   time_col,
   min_vol_ratio = 0.05,
-  max_volatility_cv = 0.15,
+  max_crossings = 1L,
   bins = 20,
   oot_date = NULL,
   max_groups = NULL
@@ -25,11 +25,11 @@ find_risk_groups(
 
 \item{time_col}{A character string with the column name representing the vintage/time cohort (e.g., "YYYY-MM"). It will be internally coerced to Date.}
 
-\item{min_vol_ratio}{The minimum acceptable population percentage for a risk group in any given vintage. Groups below this threshold are merged with their nearest risk neighbor. Default is 0.05 (5\%).}
+\item{min_vol_ratio}{The minimum acceptable population percentage for a risk group. Groups below this threshold are merged with their nearest risk neighbor. Default is 0.05 (5\%).}
 
-\item{max_volatility_cv}{The maximum acceptable Coefficient of Variation (Standard Deviation / Mean) for a group's default rate across vintages. Groups that are too volatile (CV > max_volatility_cv) will be forcefully merged to achieve statistical stability. Default is 0.15 (15\% variance).}
+\item{max_crossings}{Maximum number of vintage periods where an adjacent lower-risk group can have a HIGHER observed PD than the next group (crossing). Uses absolute count, not proportion — so it is robust to small vintage windows (6-18 months). Default is \code{1}, meaning at most 1 month of inversion is tolerated before forcing a merge.}
 
-\item{bins}{An integer or a list defining the granularity of the initial matrix grid before pruning. E.g., \code{bins = 20} slices each score into 20 bands (every 5 percentiles).}
+\item{bins}{An integer defining the granularity of the initial matrix grid before pruning. E.g., \code{bins = 20} slices each score into 20 tiles (every 5 percentiles).}
 
 \item{oot_date}{An optional cutoff Date/POSIXt object. Data where \code{time_col >= oot_date} will be preserved exclusively for Out-Of-Time (OOT) validation reporting.}
 }
