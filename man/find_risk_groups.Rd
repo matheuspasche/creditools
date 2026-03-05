@@ -9,7 +9,6 @@ find_risk_groups(
   score_cols,
   default_col,
   time_col,
-  time_col_format = "\%Y-\%m",
   min_vol_ratio = 0.05,
   max_volatility_cv = 0.15,
   bins = 20,
@@ -25,15 +24,13 @@ find_risk_groups(
 
 \item{time_col}{A character string with the column name representing the vintage/time cohort (e.g., "YYYY-MM"). It will be internally coerced to Date.}
 
-\item{time_col_format}{The format string for parsing \code{time_col} if it's not natively a Date object (e.g., \code{"\%Y-\%m"}).}
-
 \item{min_vol_ratio}{The minimum acceptable population percentage for a risk group in any given vintage. Groups below this threshold are merged with their nearest risk neighbor. Default is 0.05 (5\%).}
 
 \item{max_volatility_cv}{The maximum acceptable Coefficient of Variation (Standard Deviation / Mean) for a group's default rate across vintages. Groups that are too volatile (CV > max_volatility_cv) will be forcefully merged to achieve statistical stability. Default is 0.15 (15\% variance).}
 
 \item{bins}{An integer or a list defining the granularity of the initial matrix grid before pruning. E.g., \code{bins = 20} slices each score into 20 bands (every 5 percentiles).}
 
-\item{oot_date}{An optional cutoff date/string. Data where \code{time_col >= oot_date} will be preserved exclusively for Out-Of-Time (OOT) validation reporting. Must match \code{time_col_format}.}
+\item{oot_date}{An optional cutoff Date/POSIXt object. Data where \code{time_col >= oot_date} will be preserved exclusively for Out-Of-Time (OOT) validation reporting.}
 }
 \value{
 A list containing:

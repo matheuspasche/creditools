@@ -10,7 +10,7 @@ test_that("find_risk_groups successfully matrixes, prunes and evaluates OOT", {
         id = 1:n,
         score_A = rnorm(n, 500, 100),
         score_B = rnorm(n, 600, 50),
-        vintage = sample(c("2023-01", "2023-02", "2023-03", "2023-04"), n, replace = TRUE),
+        vintage = sample(as.Date(c("2023-01-01", "2023-02-01", "2023-03-01", "2023-04-01")), n, replace = TRUE),
         default = sample(0:1, n, replace = TRUE, prob = c(0.8, 0.2))
     )
 
@@ -23,11 +23,10 @@ test_that("find_risk_groups successfully matrixes, prunes and evaluates OOT", {
         score_cols = c("score_A", "score_B"),
         default_col = "default",
         time_col = "vintage",
-        time_col_format = "%Y-%m",
         min_vol_ratio = 0.05, # groups must have at least 5% of pop
         max_volatility_cv = 0.30, # very tolerant variance for simulated mock sake
         bins = 5, # 5x5 matrix
-        oot_date = "2023-04" # 1 month out of time
+        oot_date = as.Date("2023-04-01") # 1 month out of time
     )
 
     # Assertions

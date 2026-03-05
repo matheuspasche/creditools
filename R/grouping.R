@@ -11,11 +11,10 @@
 #' @param score_cols A character vector containing the names of the score columns to matrix.
 #' @param default_col A character string with the column name indicating the observed default (0 or 1).
 #' @param time_col A character string with the column name representing the vintage/time cohort (e.g., "YYYY-MM"). It will be internally coerced to Date.
-#' @param time_col_format The format string for parsing `time_col` if it's not natively a Date object (e.g., `"%Y-%m"`).
 #' @param min_vol_ratio The minimum acceptable population percentage for a risk group in any given vintage. Groups below this threshold are merged with their nearest risk neighbor. Default is 0.05 (5%).
 #' @param max_volatility_cv The maximum acceptable Coefficient of Variation (Standard Deviation / Mean) for a group's default rate across vintages. Groups that are too volatile (CV > max_volatility_cv) will be forcefully merged to achieve statistical stability. Default is 0.15 (15% variance).
 #' @param bins An integer or a list defining the granularity of the initial matrix grid before pruning. E.g., `bins = 20` slices each score into 20 bands (every 5 percentiles).
-#' @param oot_date An optional cutoff date/string. Data where `time_col >= oot_date` will be preserved exclusively for Out-Of-Time (OOT) validation reporting. Must match `time_col_format`.
+#' @param oot_date An optional cutoff Date/POSIXt object. Data where `time_col >= oot_date` will be preserved exclusively for Out-Of-Time (OOT) validation reporting.
 #'
 #' @return A list containing:
 #'   - `$data`: The original data frame with a new column `final_risk_group` attached to each row.
@@ -32,7 +31,6 @@ find_risk_groups <- function(data,
                              score_cols,
                              default_col,
                              time_col,
-                             time_col_format = "%Y-%m",
                              min_vol_ratio = 0.05,
                              max_volatility_cv = 0.15,
                              bins = 20,
@@ -44,18 +42,19 @@ find_risk_groups <- function(data,
         cli::cli_abort("Missing columns in data: {.field {missing_cols}}")
     }
 
-    # Strict Date Conversion
-    target_time <- as.Date(paste0(data[[time_col]], "-01"), format = paste0(time_col_format, "-%d"))
-    if (any(is.na(target_time))) cli::cli_abort("Failed to parse {.arg time_col} using {.arg time_col_format}. Ensure they form a valid Date string.")
-    data[[time_col]] <- target_time
+    # Strict Date Evaluation
+    if (!inherits(data[[time_col]], c("Date", "POSIXt"))) {
+        cli::cli_abort("Column {.arg {time_col}} must be a Date or POSIXt object. Please format your data before matrixing.")
+    }
 
     # 1. Spilt Train & OOT
     if (!is.null(oot_date)) {
-        oot_thresh <- as.Date(paste0(oot_date, "-01"), format = paste0(time_col_format, "-%d"))
-        if (is.na(oot_thresh)) cli::cli_abort("Failed to parse {.arg oot_date}. Check {.arg time_col_format}.")
+        if (!inherits(oot_date, c("Date", "POSIXt"))) {
+            cli::cli_abort("{.arg oot_date} must be a Date or POSIXt object.")
+        }
 
-        train_data <- data %>% dplyr::filter(!!rlang::sym(time_col) < oot_thresh)
-        oot_data <- data %>% dplyr::filter(!!rlang::sym(time_col) >= oot_thresh)
+        train_data <- data %>% dplyr::filter(!!rlang::sym(time_col) < oot_date)
+        oot_data <- data %>% dplyr::filter(!!rlang::sym(time_col) >= oot_date)
         if (nrow(oot_data) == 0) cli::cli_warn("OOT Date provided but no data fell into the OOT horizon.")
     } else {
         train_data <- data

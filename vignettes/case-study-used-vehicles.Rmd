@@ -1,0 +1,406 @@
+---
+title: "Case Study: Score Replacement vs Matrixing in Used Vehicles"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Case Study: Score Replacement vs Matrixing in Used Vehicles}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 8,
+  fig.height = 5,
+  message = FALSE,
+  warning = FALSE
+)
+```
+
+# Context: The Business Problem
+
+A large used-vehicle financing company processes **~5 million credit applications** spread across **15 monthly vintages**. The credit funnel is complex and sequential:
+
+| Stage | Rule | Rejection Rate |
+|:---|:---|:---|
+| CPF Validation | Invalid CPF → Rejected | ~0.5% |
+| Age | Under 19 → Rejected | ~0.3% |
+| Negative Registry | Amount > R$300 → Rejected | ~10% |
+| Credit Score (Current) | Best risk tier: 70% pass rate → Worst: 10% | Variable |
+| Anti-Fraud | 98% pass rate | ~2% |
+| Other Filters (Desk + LTV) | Best tier: 70% → Worst: 10% (by current score) | Variable |
+
+**Observed operational metrics:**
+
+- Final approval rate: ~25%
+- Contract conversion rate: 50% of approved
+- Portfolio default rate: ~2%
+
+A **new score provider** has been identified. It shows **better tail discrimination** for good risk applicants (wider PD spread in the positive tail), while the **current score performs equally well** in the negative tail. The hard-filter criteria (CPF, age, negative registry) **must not change** regardless of score performance ("keep out" stays "keep out").
+
+**The key strategic question:**
+
+> *Should we replace the current score entirely, or matrix both scores to build a combined risk hierarchy? Under constant approval rate, what happens to default rates if we stress swap-ins by 30%, 50%, and 80%?*
+
+# Step 1: Build the Analytical Base
+
+We generate a synthetic base that closely mirrors the described operation.
+
+```{r generate-base}
+library(creditools)
+library(dplyr)
+library(ggplot2)
+
+set.seed(2024)
+n <- 5000000L  # 5 Million clients
+n_vintages <- 15
+
+# --- Latent Risk Factor ---
+# z: underlying credit quality. Higher z = better client.
+z <- rnorm(n)
+
+# --- Scores ---
+# Current score: well-calibrated across the range.
+# Correlation with latent risk ~ 0.70
+e_current <- rnorm(n)
+latent_current <- 0.84 * z + 0.54 * e_current
+current_score <- round(pnorm(latent_current) * 700 + 300) # Range: ~300-1000
+
+# New score: *better* discrimination in the positive tail (good clients),
+# roughly equal in the negative tail.
+e_new <- rnorm(n)
+latent_new <- 0.84 * z + 0.54 * e_new
+# Apply a non-linear stretch to the positive tail
+latent_new <- ifelse(latent_new > 0, latent_new * 1.15, latent_new)
+new_score <- round(pnorm(latent_new) * 700 + 300) # Range: ~300-1000
+
+# --- Hard Filter Variables ---
+cpf_valid <- sample(c(TRUE, FALSE), n, replace = TRUE, prob = c(0.995, 0.005))
+age <- sample(18:70, n, replace = TRUE)
+# Children under 19 are blocked
+age[sample(seq_len(n), round(n * 0.003))] <- sample(17:18, round(n * 0.003), replace = TRUE)
+neg_registry <- rexp(n, rate = 1/100)
+# ~10% will have > 300
+neg_registry[sample(seq_len(n), round(n * 0.10))] <- runif(round(n * 0.10), 301, 5000)
+
+# --- Vintage Assignment (15 months, roughly equal) ---
+vintage <- sample(
+  seq.Date(as.Date("2023-01-01"), by = "month", length.out = n_vintages),
+  n, replace = TRUE
+)
+
+# --- Default Outcome ---
+# Base PD driven by latent risk, calibrated so portfolio PD ~ 2%
+base_pd <- plogis(-3.8 + (-1.5) * z)
+defaulted <- as.integer(runif(n) < base_pd)
+
+# --- Current Approval (drives the "keep-in" scenario) ---
+# Simulated so final approval ~ 25%
+current_score_decile <- ntile(current_score, 10)
+# Probability of being approved in the current policy varies by decile
+approval_prob_by_decile <- c(0.05, 0.08, 0.12, 0.17, 0.22, 0.28, 0.35, 0.42, 0.50, 0.60)
+approved <- as.integer(runif(n) < approval_prob_by_decile[current_score_decile])
+
+# Assemble into a data frame
+base_data <- data.frame(
+  id = seq_len(n),
+  current_score = current_score,
+  new_score = new_score,
+  cpf_valid = cpf_valid,
+  age = age,
+  neg_registry = round(neg_registry, 2),
+  vintage = vintage,
+  defaulted = defaulted,
+  approved = approved
+)
+
+# Bind the risk decile for stress stratification
+base_data$risk_decile <- ntile(base_data$current_score, 10)
+
+cat("Base generated:", format(nrow(base_data), big.mark = ","), "rows\n")
+cat("Vintages:", n_vintages, "\n")
+cat("Current approval rate:", round(mean(base_data$approved) * 100, 1), "%\n")
+cat("Portfolio PD (approved only):", 
+    round(mean(base_data$defaulted[base_data$approved == 1]) * 100, 2), "%\n")
+```
+
+# Step 2: Build the Multi-Stage Credit Funnel
+
+We recreate the exact funnel described by the business using `creditools`.
+
+```{r build-funnel}
+# ---- Define the Hard Filters ----
+# These are non-negotiable. Even if the new score says "approve", these rules stay.
+filter_cpf <- stage_filter(
+  name = "cpf_validation",
+  condition = "cpf_valid == TRUE"
+)
+
+filter_age <- stage_filter(
+  name = "age_check",
+  condition = "age >= 19"
+)
+
+filter_negativacao <- stage_filter(
+  name = "neg_registry",
+  condition = "neg_registry <= 300"
+)
+
+# ---- Define the Score-Based Credit Decision ----
+# This is where the "new_score" cutoff will dynamically vary.
+# For the baseline, we use the current score.
+credit_stage <- stage_cutoff(
+  name = "credit_decision",
+  cutoffs = list(current_score = 450)  # Baseline cutoff on current score
+)
+
+# ---- Anti-Fraud: 98% pass rate ----
+fraud_stage <- stage_rate(
+  name = "anti_fraud",
+  base_rate = 0.98
+)
+
+# ---- Other Filters (Desk/LTV): Monotonic by risk tier ----
+# Best decile: 70% pass, worst decile: 10% pass
+other_filters <- stage_rate(
+  name = "other_approvals",
+  base_rate = 0.40,
+  stress_by_score = list(
+    score_col = "current_score",
+    rate_at_min = 0.10,
+    rate_at_max = 0.70
+  )
+)
+
+# ---- Assemble the Full Policy ----
+baseline_policy <- credit_policy(
+  applicant_id_col = "id",
+  score_cols = c("current_score", "new_score"),
+  current_approval_col = "approved",
+  actual_default_col = "defaulted",
+  risk_level_col = "risk_decile",
+  simulation_stages = list(
+    filter_cpf,
+    filter_age,
+    filter_negativacao,
+    credit_stage,
+    fraud_stage,
+    other_filters
+  ),
+  stress_scenarios = list(
+    stress_aggravation(factor = 1.30, by = "risk_decile")  # 30% default aggravation on swap-ins
+  )
+)
+
+# ---- Run the Baseline Simulation ----
+baseline_sim <- run_simulation(base_data, baseline_policy, quiet = TRUE)
+baseline_summary <- summarize_results(baseline_sim)
+print(baseline_summary)
+```
+
+# Step 3: Risk Group Discovery (Current Score Only)
+
+Before comparing scores, let's discover how many **stable Homogeneous Groups (GH)** the current score alone can produce.
+
+```{r risk-groups-current}
+# Filter only the approved population (keep-ins + swap-ins)
+approved_pop <- baseline_sim$data %>%
+  filter(new_approval == TRUE)
+
+cat("Approved population:", format(nrow(approved_pop), big.mark = ","), "\n")
+
+# Find Risk Groups using ONLY the current score
+rg_current <- find_risk_groups(
+  data = approved_pop,
+  score_cols = "current_score",
+  default_col = "defaulted",
+  time_col = "vintage",
+  bins = 20,
+  min_vol_ratio = 0.05,
+  max_volatility_cv = 0.15,
+  oot_date = as.Date("2024-01-01")  # Last 2 months as OOT
+)
+
+cat("Stable Risk Groups (Current Score):", 
+    length(unique(rg_current$report$risk_rating[rg_current$report$period == "Train"])), "\n\n")
+print(rg_current$report)
+```
+
+# Step 4: Risk Group Discovery (Matrixing Both Scores)
+
+Now let's see if **combining both scores** yields a finer, more stable risk hierarchy.
+
+```{r risk-groups-matrix}
+# Find Risk Groups using BOTH scores (2D Matrix)
+rg_matrix <- find_risk_groups(
+  data = approved_pop,
+  score_cols = c("current_score", "new_score"),
+  default_col = "defaulted",
+  time_col = "vintage",
+  bins = 10,            # 10x10 = 100 initial pockets
+  min_vol_ratio = 0.05,
+  max_volatility_cv = 0.15,
+  oot_date = as.Date("2024-01-01")
+)
+
+cat("Stable Risk Groups (Matrix):", 
+    length(unique(rg_matrix$report$risk_rating[rg_matrix$report$period == "Train"])), "\n\n")
+print(rg_matrix$report)
+```
+
+# Step 5: Stress Scenarios — Swap-In Aggravation
+
+The critical question: **what happens to PD if we maintain the same approval rate but aggravate swap-in default rates by 30%, 50%, and 80%?**
+
+```{r stress-comparison}
+run_stress_scenario <- function(data, policy_base, aggravation_factor) {
+  # Clone the policy with a new stress factor
+  stressed_policy <- policy_base
+  stressed_policy$stress_scenarios <- list(
+    stress_aggravation(factor = aggravation_factor, by = "risk_decile")
+  )
+  
+  sim <- run_simulation(data, stressed_policy, quiet = TRUE)
+  sim_data <- sim$data
+  
+  approved <- sim_data[sim_data$new_approval == TRUE & !is.na(sim_data$new_approval), ]
+  
+  tibble::tibble(
+    aggravation = paste0("+", round((aggravation_factor - 1) * 100), "%"),
+    aggravation_factor = aggravation_factor,
+    total_approved = nrow(approved),
+    approval_rate = round(nrow(approved) / nrow(sim_data) * 100, 2),
+    swap_in_count = sum(sim_data$scenario == "swap_in", na.rm = TRUE),
+    keep_in_count = sum(sim_data$scenario == "keep_in", na.rm = TRUE),
+    portfolio_pd = round(mean(approved$simulated_default, na.rm = TRUE) * 100, 3),
+    swap_in_pd = round(mean(
+      approved$simulated_default[approved$scenario == "swap_in"], na.rm = TRUE
+    ) * 100, 3),
+    keep_in_pd = round(mean(
+      approved$simulated_default[approved$scenario == "keep_in"], na.rm = TRUE
+    ) * 100, 3)
+  )
+}
+
+# Run all three stress scenarios
+stress_results <- dplyr::bind_rows(
+  run_stress_scenario(base_data, baseline_policy, 1.30),
+  run_stress_scenario(base_data, baseline_policy, 1.50),
+  run_stress_scenario(base_data, baseline_policy, 1.80)
+)
+
+knitr::kable(
+  stress_results,
+  caption = "Impact of Swap-In Default Aggravation on Portfolio PD",
+  col.names = c("Aggravation", "Factor", "Approved", "Appr. Rate %", 
+                "Swap-Ins", "Keep-Ins", "Portfolio PD %", 
+                "Swap-In PD %", "Keep-In PD %")
+)
+```
+
+# Step 6: Comparing Risk Hierarchies
+
+Let's visualize the **PD spread** (amplitude between best and worst risk group) for each approach.
+
+```{r compare-hierarchies, fig.height=6}
+# Prepare Train-only comparison data
+train_current <- rg_current$report %>%
+  filter(period == "Train") %>%
+  mutate(strategy = "Current Score Only")
+
+train_matrix <- rg_matrix$report %>%
+  filter(period == "Train") %>%
+  mutate(strategy = "Matrix (Current + New)")
+
+comparison <- bind_rows(train_current, train_matrix) %>%
+  group_by(strategy) %>%
+  mutate(
+    rank = row_number(),
+    total_ranks = n()
+  ) %>%
+  ungroup()
+
+ggplot(comparison, aes(x = rank, y = avg_pd * 100, color = strategy)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 2.5) +
+  scale_color_manual(values = c("Current Score Only" = "#E74C3C", 
+                                 "Matrix (Current + New)" = "#2ECC71")) +
+  labs(
+    title = "PD by Risk Group: Current Score vs Matrix",
+    subtitle = "Higher spread = better pricing discrimination",
+    x = "Risk Group (Best → Worst)",
+    y = "Default Rate (%)",
+    color = "Strategy"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "bottom")
+```
+
+# Step 7: Technical Verdict
+
+```{r verdict}
+# Compute key metrics for comparison
+spread_current <- diff(range(
+  rg_current$report$avg_pd[rg_current$report$period == "Train"]
+)) * 100
+
+spread_matrix <- diff(range(
+  rg_matrix$report$avg_pd[rg_matrix$report$period == "Train"]
+)) * 100
+
+n_groups_current <- length(unique(
+  rg_current$report$risk_rating[rg_current$report$period == "Train"]
+))
+
+n_groups_matrix <- length(unique(
+  rg_matrix$report$risk_rating[rg_matrix$report$period == "Train"]
+))
+
+cat("=" |> rep(60) |> paste(collapse = ""), "\n")
+cat("                STRATEGIC RECOMMENDATION\n")
+cat("=" |> rep(60) |> paste(collapse = ""), "\n\n")
+
+cat("Risk Groups (Current Score Only):", n_groups_current, "\n")
+cat("Risk Groups (Matrix):", n_groups_matrix, "\n")
+cat("PD Spread - Current:", round(spread_current, 2), "pp\n")
+cat("PD Spread - Matrix:", round(spread_matrix, 2), "pp\n")
+cat("Spread Gain:", round(spread_matrix - spread_current, 2), "pp\n\n")
+
+if (spread_matrix > spread_current * 1.10) {
+  cat(">> RECOMMENDATION: MATRIX BOTH SCORES.\n")
+  cat(">> The combined matrix provides", 
+      round((spread_matrix / spread_current - 1) * 100, 1), 
+      "% more PD amplitude.\n")
+  cat(">> This translates to finer Risk-Based Pricing tiers and\n")
+  cat(">> better risk-adjusted returns even under conservative\n")
+  cat(">> swap-in aggravation scenarios.\n")
+} else if (spread_matrix > spread_current) {
+  cat(">> RECOMMENDATION: MARGINAL GAIN FROM MATRIXING.\n")
+  cat(">> Consider matrixing if the operational cost is low.\n")
+  cat(">> Otherwise, replacing the score may simplify governance.\n")
+} else {
+  cat(">> RECOMMENDATION: REPLACE WITH NEW SCORE.\n")
+  cat(">> Matrixing does not add meaningful discrimination.\n")
+  cat(">> A simpler single-score policy is preferred.\n")
+}
+
+cat("\n")
+cat("-" |> rep(60) |> paste(collapse = ""), "\n")
+cat("Stress Test Summary (at constant approval rate):\n")
+print(stress_results %>% select(aggravation, portfolio_pd, swap_in_pd, keep_in_pd))
+```
+
+# Conclusion
+
+This case study demonstrates the **end-to-end capabilities of `creditools`** for a complex real-world credit operation:
+
+1. **Hard Filters** (`stage_filter`): Non-negotiable business rules (CPF, age, negative registry) are enforced before any score-based decision. These populations remain "keep out" regardless of which score is used.
+
+2. **Multi-Stage Funnel** (`credit_policy` + `run_simulation`): The complete decision chain — from hard filters through score cutoffs, fraud checks, and desk approvals — is modeled as a sequential funnel with granular per-applicant tracking.
+
+3. **Risk Grouping** (`find_risk_groups`): Stable, non-crossing risk hierarchies are automatically discovered, pruned for volume, and validated for temporal stability (vintage volatility). The algorithm detects whether matrixing adds genuine discrimination or whether a single score suffices.
+
+4. **Stress Testing** (`stress_aggravation`): Swap-in populations are aggraved at 30%, 50%, and 80% premiums to understand the portfolio's sensitivity to adverse scenarios under constant approval constraints.
+
+5. **Actionable Output**: The final recommendation is data-driven: *matrix or replace*, supported by quantified PD spread gains, stress-test resilience, and OOT validation metrics.

@@ -75,7 +75,7 @@ sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
 
 # Inject simulated Vintages (Time Cohorts) and Categorical dimensions for Advanced Analytics showcase
 sample_data$vintage_month <- sample(
-  c("2023-01", "2023-02", "2023-03", "2023-04", "2023-11", "2023-12"), 
+  as.Date(c("2023-01-01", "2023-02-01", "2023-03-01", "2023-04-01", "2023-11-01", "2023-12-01")), 
   nrow(sample_data), replace = TRUE
 )
 sample_data$status <- sample(
@@ -231,11 +231,10 @@ rbp_matrix_results <- creditools::find_risk_groups(
     score_cols = c("old_score", "new_score"), # Combining both!
     default_col = "defaulted", 
     time_col = "vintage_month",
-    time_col_format = "%Y-%m", # Strict Date parsing
     bins = 10,                 # Starts as a 10x10 matrix (100 pockets)
     min_vol_ratio = 0.05,      # Groups cannot be smaller than 5%
     max_volatility_cv = 0.20,  # Tolerates maximum 20% of PD Volatility (CV) per Vintage compared to the Average
-    oot_date = "2023-11"       # Preserves Nov/Dec for Out-Of-Time validation!
+    oot_date = as.Date("2023-11-01") # Preserves Nov/Dec for Out-Of-Time validation!
 )
 
 # How many stable groups did it find?
