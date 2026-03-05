@@ -135,5 +135,5 @@ export <- sim_B$data %>%
     left_join(rg_M$data %>% select(id, risk_rating_matrix = risk_rating), by = "id")
 
 out_path <- "C:/Users/Matheus/Documents/case_study_export_complex.csv"
-readr::write_csv(export, out_path)
+readr::write_csv2(export, out_path)
 cat("SUCCESS! Exported", nrow(export), "rows to:", out_path, "\n")
