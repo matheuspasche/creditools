@@ -118,7 +118,8 @@ simulate_stage <- function(data, stage, policy) {
 simulate_stage.stage_cutoff <- function(data, stage, policy) {
   # Create a matrix of approval decisions for each score in this stage
   approval_matrix <- purrr::map_dfc(names(stage$cutoffs), function(score_col) {
-    data[[score_col]] >= stage$cutoffs[[score_col]]
+    res <- data[[score_col]] >= stage$cutoffs[[score_col]]
+    tibble::tibble(!!score_col := res)
   })
 
   # Applicant passes if they meet ALL cutoffs in the stage
