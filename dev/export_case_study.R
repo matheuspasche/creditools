@@ -74,7 +74,7 @@ make_policy <- function(score_col, cutoff = 450, apply_stress = FALSE) {
 cat("3. Simulating Policy A (Current)...\n")
 sim_A <- run_simulation(base_data, make_policy("current_score", cutoff = 450, apply_stress = FALSE), quiet = TRUE)
 
-target_vol <- sum(sim_A$data$new_approval)
+target_vol <- sum(sim_A$data$new_approval == 1, na.rm = TRUE)
 target_rate <- target_vol / n
 cat(sprintf("   Target Approval Volume: %s (%.2f%%)\n", format(target_vol, big.mark = ","), target_rate * 100))
 
@@ -105,8 +105,8 @@ cat("5. Simulating Policy B with volume-neutral cutoff...\n")
 sim_B <- run_simulation(base_data, make_policy("new_score", cutoff = best_cutoff, apply_stress = TRUE), quiet = TRUE)
 
 cat("6. Finding Risk Groups (Ward Clustering)...\n")
-app_A <- sim_A$data %>% filter(new_approval == TRUE)
-app_B <- sim_B$data %>% filter(new_approval == TRUE)
+app_A <- sim_A$data %>% filter(new_approval == 1)
+app_B <- sim_B$data %>% filter(new_approval == 1)
 
 rg_B <- find_risk_groups(
     data = app_B, score_cols = "new_score",

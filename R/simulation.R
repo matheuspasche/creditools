@@ -82,7 +82,7 @@ run_simulation <- function(data, policy, quiet = FALSE) {
 
   # Determine final approval status under the new policy
   final_approval_flags <- purrr::map(data[unlist(stage_approval_cols)], function(col) col == 1 & !is.na(col))
-  data$new_approval <- Reduce(`&`, final_approval_flags)
+  data$new_approval <- as.integer(Reduce(`&`, final_approval_flags))
 
   # Classify scenarios based on old vs. new final approval
   data <- classify_scenarios(data, policy, "new_approval")
@@ -244,10 +244,10 @@ validate_simulation_inputs <- function(data, policy) {
 #' @keywords internal
 classify_scenarios <- function(data, policy, new_approval_col) {
   data$scenario <- dplyr::case_when(
-    data[[policy$current_approval_col]] == 0 & data[[new_approval_col]] == TRUE ~ "swap_in",
-    data[[policy$current_approval_col]] == 1 & data[[new_approval_col]] == FALSE ~ "swap_out",
-    data[[policy$current_approval_col]] == 1 & data[[new_approval_col]] == TRUE ~ "keep_in",
-    data[[policy$current_approval_col]] == 0 & data[[new_approval_col]] == FALSE ~ "keep_out",
+    data[[policy$current_approval_col]] == 0 & data[[new_approval_col]] == 1 ~ "swap_in",
+    data[[policy$current_approval_col]] == 1 & data[[new_approval_col]] == 0 ~ "swap_out",
+    data[[policy$current_approval_col]] == 1 & data[[new_approval_col]] == 1 ~ "keep_in",
+    data[[policy$current_approval_col]] == 0 & data[[new_approval_col]] == 0 ~ "keep_out",
     TRUE ~ NA_character_
   )
 
