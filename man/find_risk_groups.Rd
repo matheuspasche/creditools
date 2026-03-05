@@ -12,7 +12,8 @@ find_risk_groups(
   min_vol_ratio = 0.05,
   max_volatility_cv = 0.15,
   bins = 20,
-  oot_date = NULL
+  oot_date = NULL,
+  max_groups = NULL
 )
 }
 \arguments{

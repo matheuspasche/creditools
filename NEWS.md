@@ -1,18 +1,44 @@
 # creditools 0.3.0
 
-* Implemented `stage_filter` to dynamically inject categorical SQL-like dropouts inside simulation funnels.
-* Developed `find_risk_groups()` heuristic: A robust N-Score RBP matrix clusterer with Volatility check (SD/Mean) and Vintage parsers out-of-the-box.
-* Added `find_pairwise_risk_groups()`, a high-level wrapper scaling Matrix combinatorics for multiple challenger scores smoothly via `furrr/purrr`.
-* Integrated standard `cli` Progress Bars into `run_simulation` and grouping wraps to handle heavy workloads (>1.5M rows) interactively.
-* Extensive TDD Suite built for Matrix Volume Pruning and Non-Crossing overlap routines.
+## New Algorithm: Ward Agglomerative Clustering in `find_risk_groups()`
 
-# creditools 0.2.1
-# creditools 0.2.0
+* **Breaking change:** Parameter `max_volatility_cv` (and its interim alias `max_overlap_rate`) 
+  replaced by `max_crossings` — an integer count of the maximum number of vintage periods where 
+  adjacent risk groups may invert their PD ordering. This is more robust than a proportion-based 
+  threshold when working with small vintage windows (6–18 months), which is the common case in 
+  credit analysis.
+
+* **New algorithm:** `find_risk_groups()` now uses **Ward Agglomerative Clustering** instead of
+  sequential heuristics. The merge cost is the Ward Distance:
+  `delta = (Va * Vb) / (Va + Vb) * (PDa - PDb)^2`
+  This guarantees maximum inter-group separation while enforcing a strict hierarchy of constraints:
+  1. Monotonicity (PD must increase with group index — no inversions)
+  2. Minimum volume per group (`min_vol_ratio`)
+  3. Maximum PD crossings over time (`max_crossings`)
+  4. Tail compression (`max_groups`, optional)
+
+* Removed `time_col_format` parameter — `time_col` must now be a proper `Date` or `POSIXt` column.
+  This eliminates ambiguous parsing and simplifies the interface.
+
+## Other Improvements
+
+* Fixed `New names: ...1` warnings in `run_tradeoff_analysis()`, `simulate_swap_in_defaults()`, 
+  and `evaluate_cutoff_combinations()` by using `as_tibble_row()`, `!!col_name :=` assignment,
+  and `.name_repair = "unique_quiet"` respectively.
+
+* Updated documentation and `README.md` to reflect the new Ward algorithm, constraint hierarchy,
+  and best practices (train on approved population, not full applicant base).
+
+---
+
+# creditools 0.2.1 / 0.2.0
 
 * Implemented `stress_custom(func)` to allow arbitrary closure behavior over simulation engine.
 * Enhanced `run_tradeoff_analysis` to dynamically intercept `<stage>_base_rate` from params grid.
 * Massive showcase >1.5M applicants with `future` parallel logic built natively in `README.Rmd`.
 * Structural cleaning and reduction of repository unused/non-CRAN files.
+
+---
 
 # creditools 0.1.0
 

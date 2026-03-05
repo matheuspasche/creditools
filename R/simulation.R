@@ -304,9 +304,8 @@ simulate_swap_in_defaults <- function(data, policy) {
       "custom" = scenario$func(swap_ins),
       cli::cli_abort("Unknown stress scenario type: {scenario$type}")
     )
-    df <- tibble::tibble(res)
-    colnames(df) <- paste0("prob_", seq_idx)
-    return(df)
+    col_name <- paste0("prob_", seq_idx)
+    tibble::tibble(!!col_name := res)
   })
 
   # For each applicant, take the highest (most conservative) probability

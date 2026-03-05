@@ -11,9 +11,9 @@
 #' @param score_cols A character vector containing the names of the score columns to matrix.
 #' @param default_col A character string with the column name indicating the observed default (0 or 1).
 #' @param time_col A character string with the column name representing the vintage/time cohort (e.g., "YYYY-MM"). It will be internally coerced to Date.
-#' @param min_vol_ratio The minimum acceptable population percentage for a risk group in any given vintage. Groups below this threshold are merged with their nearest risk neighbor. Default is 0.05 (5%).
-#' @param max_volatility_cv The maximum acceptable Coefficient of Variation (Standard Deviation / Mean) for a group's default rate across vintages. Groups that are too volatile (CV > max_volatility_cv) will be forcefully merged to achieve statistical stability. Default is 0.15 (15% variance).
-#' @param bins An integer or a list defining the granularity of the initial matrix grid before pruning. E.g., `bins = 20` slices each score into 20 bands (every 5 percentiles).
+#' @param min_vol_ratio The minimum acceptable population percentage for a risk group. Groups below this threshold are merged with their nearest risk neighbor. Default is 0.05 (5%).
+#' @param max_crossings Maximum number of vintage periods where an adjacent lower-risk group can have a HIGHER observed PD than the next group (crossing). Uses absolute count, not proportion — so it is robust to small vintage windows (6-18 months). Default is `1`, meaning at most 1 month of inversion is tolerated before forcing a merge.
+#' @param bins An integer defining the granularity of the initial matrix grid before pruning. E.g., `bins = 20` slices each score into 20 tiles (every 5 percentiles).
 #' @param oot_date An optional cutoff Date/POSIXt object. Data where `time_col >= oot_date` will be preserved exclusively for Out-Of-Time (OOT) validation reporting.
 #'
 #' @return A list containing:
@@ -32,9 +32,10 @@ find_risk_groups <- function(data,
                              default_col,
                              time_col,
                              min_vol_ratio = 0.05,
-                             max_volatility_cv = 0.15,
+                             max_crossings = 1L,
                              bins = 20,
-                             oot_date = NULL) {
+                             oot_date = NULL,
+                             max_groups = NULL) {
 
     # Basic Validation
     missing_cols <- setdiff(c(score_cols, default_col, time_col), names(data))
@@ -89,118 +90,122 @@ find_risk_groups <- function(data,
     train_data <- train_data %>%
         dplyr::left_join(matrix_summary %>% dplyr::select(dplyr::all_of(c(bin_cols, "micro_rating"))), by = bin_cols)
 
-    # --- STEP 3: VOLUME PRUNING ---
+    # --- SETUP MATHEMATICAL BASE ---
+    total_vol <- nrow(train_data)
 
-    # We start assigning each micro_rating to its own final_group.
-    # We iteratively merge small groups into their closest neighbors.
     current_groups <- matrix_summary %>%
         dplyr::select(micro_rating, empirical_pd, combo_vol) %>%
         dplyr::mutate(group_id = micro_rating)
 
-    total_vol <- nrow(train_data)
+    # Pre-calculate monthly PDs for stability checks
+    monthly_stats <- train_data %>%
+        dplyr::group_by(micro_rating, !!rlang::sym(time_col)) %>%
+        dplyr::summarize(
+            bads = sum(!!rlang::sym(default_col), na.rm = TRUE),
+            vols = dplyr::n(),
+            .groups = "drop"
+        )
 
-    converged_vol <- FALSE
-    while (!converged_vol) {
-        group_summary <- current_groups %>%
+    # --- AGGLOMERATIVE CLUSTERING OPTIMIZATION LOOP ---
+    converged <- FALSE
+    while (!converged) {
+        group_bads_vols <- current_groups %>%
+            dplyr::mutate(combo_bads = empirical_pd * combo_vol) %>%
             dplyr::group_by(group_id) %>%
             dplyr::summarize(
                 vol = sum(combo_vol),
-                vol_ratio = vol / total_vol,
-                mean_pd = mean(empirical_pd),
+                bads = sum(combo_bads),
+                pd = bads / vol,
                 .groups = "drop"
             ) %>%
             dplyr::arrange(group_id)
 
-        # Find the first group that violates the volume ratio
-        small_idx <- which(group_summary$vol_ratio < min_vol_ratio)[1]
+        group_summary <- group_bads_vols %>%
+            dplyr::mutate(vol_ratio = vol / total_vol, mean_pd = pd)
 
-        if (is.na(small_idx)) {
-            converged_vol <- TRUE
-        } else {
-            target_group <- group_summary$group_id[small_idx]
+        n_groups <- nrow(group_summary)
+        if (n_groups <= 1) break
 
-            # Determine the best neighbor to merge with (up or down)
-            prev_group <- if (small_idx > 1) group_summary$group_id[small_idx - 1] else NA
-            next_group <- if (small_idx < nrow(group_summary)) group_summary$group_id[small_idx + 1] else NA
-
-            # For simplicity, prefer merging downwards (towards worse risk), unless it isolates a bad group
-            if (!is.na(next_group)) {
-                merge_into <- next_group
-            } else {
-                merge_into <- prev_group
-            }
-
-            # Apply merge map
-            current_groups <- current_groups %>%
-                dplyr::mutate(group_id = ifelse(group_id == target_group, merge_into, group_id))
-
-            # Re-index remaining groups cleanly via dense_rank
-            current_groups$group_id <- as.integer(as.factor(current_groups$group_id))
-        }
-    }
-
-    # --- STEP 4: TIME-STABILITY VOLATILITY PRUNING ---
-    # We prune strictly based on the Coefficient of Variation (SD / Mean).
-    # Groups that swing wildly over time are unreliable and should be merged.
-
-    converged_stab <- FALSE
-    while (!converged_stab) {
-
-        # Calculate monthly PD and its overall variance per group
-        stab_check <- train_data %>%
-            dplyr::left_join(current_groups %>% dplyr::select(micro_rating, group_id), by = "micro_rating") %>%
+        current_monthly <- monthly_stats %>%
+            dplyr::inner_join(current_groups %>% dplyr::select(micro_rating, group_id), by = "micro_rating") %>%
             dplyr::group_by(group_id, !!rlang::sym(time_col)) %>%
             dplyr::summarize(
-                pd = sum(!!rlang::sym(default_col), na.rm = TRUE) / dplyr::n(),
+                pd = sum(bads) / sum(vols),
                 .groups = "drop"
             ) %>%
-            dplyr::group_by(group_id) %>%
-            dplyr::summarize(
-                mean_pd = mean(pd, na.rm = TRUE),
-                sd_pd = stats::sd(pd, na.rm = TRUE),
-                cv_pd = ifelse(mean_pd == 0, 0, sd_pd / mean_pd),
-                .groups = "drop"
-            )
+            tidyr::pivot_wider(names_from = group_id, values_from = pd)
 
-        unique_groups <- sort(unique(stab_check$group_id))
-        max_groups <- length(unique_groups)
-        violation_found <- FALSE
+        g_ids <- group_summary$group_id
 
-        if (max_groups > 1) {
-            # Find groups exceeding the maximum acceptable volatility constraint using purrr
-            violators <- purrr::map_dfr(unique_groups, ~ {
-                group_data <- stab_check %>% dplyr::filter(group_id == .x)
-                if (is.na(group_data$cv_pd)) group_data$cv_pd <- 0 # Handles single-vintage edgecases securely
-                return(group_data)
-            }) %>%
-                dplyr::filter(cv_pd > max_volatility_cv)
+        min_cost <- Inf
+        best_pair <- NULL
 
-            if (nrow(violators) > 0) {
-                # Taking the most volatile group to merge first
-                worst_group <- violators$group_id[which.max(violators$cv_pd)]
+        for (i in 1:(n_groups - 1)) {
+            g1 <- g_ids[i]
+            g2 <- g_ids[i + 1]
 
-                # We merge towards neighbor with lowest volatility to help stabilize
-                idx <- which(unique_groups == worst_group)
-                neighbor_choices <- c()
-                if (idx > 1) neighbor_choices <- c(neighbor_choices, unique_groups[idx - 1])
-                if (idx < max_groups) neighbor_choices <- c(neighbor_choices, unique_groups[idx + 1])
+            v1 <- group_summary$vol_ratio[i]
+            v2 <- group_summary$vol_ratio[i + 1]
 
-                best_neighbor <- stab_check %>%
-                    dplyr::filter(group_id %in% neighbor_choices) %>%
-                    dplyr::arrange(cv_pd) %>%
-                    dplyr::pull(group_id) %>%
-                    .[1]
+            pd1 <- group_summary$mean_pd[i]
+            pd2 <- group_summary$mean_pd[i + 1]
 
-                # Apply mapping
-                current_groups <- current_groups %>%
-                    dplyr::mutate(group_id = ifelse(group_id == worst_group, best_neighbor, group_id))
+            # Ward Distance
+            delta <- (v1 * v2) / (v1 + v2) * (pd1 - pd2)^2
 
-                current_groups$group_id <- as.integer(as.factor(current_groups$group_id))
-                violation_found <- TRUE
+            cost <- delta
+
+            # Priority 1: Monotonicity (Inversion / Flat)
+            if (pd1 >= pd2) {
+                cost <- -1e9 + delta
+            }
+            # Priority 2: Volume constraint
+            else if (v1 < min_vol_ratio || v2 < min_vol_ratio) {
+                if (cost > -1e6) cost <- -1e6 + delta
+            }
+            # Priority 3: Stability (Non-Crossing)
+            else {
+                col1 <- as.character(g1)
+                col2 <- as.character(g2)
+
+                if (col1 %in% names(current_monthly) && col2 %in% names(current_monthly)) {
+                    valid_idx <- !is.na(current_monthly[[col1]]) & !is.na(current_monthly[[col2]])
+                    if (sum(valid_idx) > 0) {
+                        # Count absolute number of periods where lower-risk group
+                        # has PD >= higher-risk group (crossing). Using absolute
+                        # count instead of proportion makes this robust to small
+                        # vintage windows (6-18 months common in credit analysis).
+                        n_crossings <- sum(current_monthly[[col1]][valid_idx] >= current_monthly[[col2]][valid_idx])
+                        if (n_crossings > max_crossings) {
+                            if (cost > -1e3) cost <- -1e3 + delta
+                        }
+                    }
+                }
+            }
+
+            if (cost < min_cost) {
+                min_cost <- cost
+                best_pair <- c(g1, g2)
             }
         }
 
-        if (!violation_found) converged_stab <- TRUE
+        if (min_cost < 0) {
+            # Constraint violated: Merge the pair with the most urgent penalty (and smallest delta)
+            current_groups <- current_groups %>%
+                dplyr::mutate(group_id = ifelse(group_id == best_pair[2], best_pair[1], group_id))
+            current_groups$group_id <- as.integer(as.factor(current_groups$group_id))
+        } else {
+            # Constraints satisfied
+            # Priority 4: Max Groups Tail Compression
+            if (!is.null(max_groups) && n_groups > max_groups) {
+                # Merge the pair with the smallest information loss (Ward Distance)
+                current_groups <- current_groups %>%
+                    dplyr::mutate(group_id = ifelse(group_id == best_pair[2], best_pair[1], group_id))
+                current_groups$group_id <- as.integer(as.factor(current_groups$group_id))
+            } else {
+                converged <- TRUE
+            }
+        }
     }
 
     # --- FINALIZING AND REPORTING ---

@@ -1,7 +1,7 @@
 
 <!-- README.md is generated from README.Rmd. Please edit that file -->
 
-# creditools
+# creditools <img src="man/figures/logo.png" align="right" height="139" alt="" />
 
 <!-- badges: start -->
 
@@ -9,45 +9,27 @@
 experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 <!-- badges: end -->
 
-The goal of `creditools` is to put the computational power of an entire
-risk analytics team into a single, scalable R package. It provides a
-flexible framework for mathematically simulating and optimizing credit
-policies.
+> **Put the computational power of an entire risk analytics team into a
+> single, scalable R package.**
 
-Instead of spending weeks writing ad-hoc code to backtest a single
-credit score, `creditools` allows risk and business analysts to
-instantly model multi-stage decision funnels (Credit, Anti-fraud,
-Conversion), simulate the impact of new strategies, and discover the
-**Optimal Efficient Frontier** between approval volume and default
-rates.
+`creditools` is a framework for mathematically simulating and optimizing
+credit policies. Instead of spending weeks writing ad-hoc code to
+backtest a single score, `creditools` lets risk analysts model
+multi-stage decision funnels, simulate swap-in/swap-out impacts, extract
+efficient frontiers, and build **stable Risk Based Pricing (RBP)
+matrices** — all in minutes.
 
-## Why creditools? (The Business Value)
+## Why creditools?
 
-In modern credit risk management, finding the sweet spot of
-profitability requires testing endless permutations. `creditools` was
-designed to answer complex business questions in minutes:
-
-- **Test N-Scores Simultaneously:** Why validate one challenger score
-  when you can simulate 10 different scores at once? Find out exactly
-  which model yields the best risk-adjusted return.
-- **Find the Optimal Cutoff:** Extract the exact approval rates needed
-  to keep delinquency constant, or find the maximum possible delinquency
-  mitigation while holding your approval volume steady.
-- **Surgical Stress Testing (Swap-ins):** When approving new profiles,
-  delinquency doesn’t behave linearly. `creditools` lets you inject
-  custom stress scenarios (e.g., *increase PD by 20% for deciles 9 and
-  10, 50% for deciles 6-8, and 80% for the rest*).
-- **Preserve Funnel Conversion:** Easily lock empirical conversion and
-  activation rates by stage, ensuring your simulated business volumes
-  reflect real-world borrower behavior.
-- **Massive Scalability:** Under the hood, the engine supports `future`
-  parallel processing. Simulate millions of applicants across hundreds
-  of scenarios effortlessly.
+| Question | How creditools answers it |
+|---|---|
+| Which challenger score wins? | Simulate N scores simultaneously; compare default rates at equal approval |
+| What cutoff should I set? | Run `run_tradeoff_analysis()` to extract the efficient frontier |
+| How bad will swap-ins be? | Inject custom stress scenarios per risk segment |
+| Which risk groups are stable over time? | `find_risk_groups()` runs Ward Agglomerative Clustering — **zero inter-group crossings guaranteed** |
+| Can I handle 5M applicants? | Native `future` parallel processing support |
 
 ## Installation
-
-You can install the development version of creditools from
-[GitHub](https://github.com/) with:
 
 ``` r
 # install.packages("devtools")
@@ -56,163 +38,80 @@ devtools::install_github("matheuspasche/creditools")
 
 ## Core Concepts
 
-The package is built around three main ideas:
+The package is organized around three layers:
 
-1.  **`credit_policy()`**: A central object that holds all the
-    configuration for a simulation: column mappings, the sequence of
-    decision stages, and stress scenarios for default simulation.
-2.  **`stages`**: A policy is composed of sequential stages, such as
-    `stage_cutoff()` (for score-based decisions) or `stage_rate()` (for
-    probabilistic stages like fraud checks or conversion rates).
-3.  **`run_simulation()` / `run_tradeoff_analysis()`**: The simulation
-    engines. `run_simulation()` executes a single, defined policy, while
-    `run_tradeoff_analysis()` is a powerful wrapper that runs dozens or
-    hundreds of simulations to explore the impact of varying parameters.
+1.  **Policy** — `credit_policy()` holds all configuration: column
+    mappings, decision stages, and stress scenarios.
+2.  **Stages** — Sequential filters applied to the applicant funnel:
+    `stage_cutoff()`, `stage_rate()`, `stage_filter()`.
+3.  **Engines** — `run_simulation()` runs one policy; `run_tradeoff_analysis()`
+    sweeps a parameter grid in parallel; `find_risk_groups()` clusters
+    into stable risk tiers.
 
-## A Complete Example
+---
 
-Here is a walk-through of a complex, realistic simulation using a
-massive analytical base (\> 1.5 Million applicants), multiple decision
-stages (Credit, Fraud, Conversion), parallel processing, and custom
-stress scenarios.
-
-### 1. Load Package, Parallel Plan and Generate Data
-
-First, we’ll generate 1,500,000 applicants mimicking a historical base
-where applicants have an “old_score” and a new challenger “new_score”.
-We want to evaluate if the `new_score` mitigates default risk while
-retaining healthy approval and conversion metrics.
+## Example 1: Multi-Stage Simulation
 
 ``` r
 library(creditools)
 library(dplyr)
-library(ggplot2)
 library(future)
 
-# Enable parallel processing to handle the > 1.5 Million applicant volume swiftly
-future::plan(multisession)
+future::plan(multisession)  # Parallel processing
 
-# Generate a massive analytical base (1.5 Million applicants)
 sample_data <- generate_sample_data(n_applicants = 1500000, seed = 42)
-
-# Create stratification bands for the new score
 sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
-
-# Inject simulated Vintages (Time Cohorts) and Categorical dimensions for Advanced Analytics showcase
-sample_data$vintage_month <- sample(
-  c("2023-01", "2023-02", "2023-03", "2023-04", "2023-11", "2023-12"), 
-  nrow(sample_data), replace = TRUE
-)
-sample_data$status <- sample(
-  c("Approved", "Denied"), 
-  nrow(sample_data), replace = TRUE, prob = c(0.85, 0.15)
-)
 ```
 
-### 2. Define Funnel Stages and Credit Policy
-
-A risk credit policy is rarely a single cutoff. We build a multi-stage
-funnel where applicants need to sequentially pass through a credit
-filter, an anti-fraud engine, and finally, a conversion rate probability
-(e.g. credit seekers are more likely to accept higher rates).
+### Define funnel stages and policy
 
 ``` r
-# Stage 1: Credit decision (Approval driven by a Score Cutoff)
-credit_stage <- creditools::stage_cutoff(
-  name = "credit_decision",
-  cutoffs = list(new_score = 600) # This will be dynamically varied later
-)
-
-# Stage 2: Anti-fraud model (Flat 95% generic pass rate)
-antifraud_stage <- creditools::stage_rate(
-  name = "anti_fraud",
-  base_rate = 0.95
-)
-
-# Stage 3: Conversion rate (Monotonically decreasing with score)
-# Worst scores have a robust conversion rate (need credit), best scores have lower rate.
-conversion_stage <- creditools::stage_rate(
-  name = "conversion",
-  base_rate = 0.70, # Baseline, overriding dynamically 
-  stress_by_score = list(
-    score_col = "new_score",
-    rate_at_min = 0.90, 
-    rate_at_max = 0.60
-  )
-)
-
-# Create the full policy object
-base_policy <- creditools::credit_policy(
-  applicant_id_col = "id",
-  score_cols = c("old_score", "new_score"),
+base_policy <- credit_policy(
+  applicant_id_col   = "id",
+  score_cols         = c("old_score", "new_score"),
   current_approval_col = "approved",
   actual_default_col = "defaulted",
-  risk_level_col = "new_score_decile", # Required if we apply stratification in stress test
-  simulation_stages = list(
-    credit_stage,
-    antifraud_stage,
-    conversion_stage
+  risk_level_col     = "new_score_decile",
+  simulation_stages  = list(
+    stage_cutoff("credit_decision", cutoffs = list(new_score = 600)),
+    stage_rate("anti_fraud",  base_rate = 0.95),
+    stage_rate("conversion",  base_rate = 0.70)
+  ),
+  stress_scenarios = list(
+    stress_aggravation(factor = 1.3, by = "new_score_decile")
   )
 )
 ```
 
-### 3. Inspect a Single Simulation (Granular Audit)
-
-Before running massive loops, you might want to audit exactly what
-happens to each individual applicant. The `run_simulation()` engine
-allows you to process a single policy and inspect the exact mathematical
-flags applied to every single row (e.g., did they pass the cutoff? did
-they convert? what is their simulated PD? did they default?).
+### Granular single run
 
 ``` r
-# Run a single static pass of the policy over the 1.5M applicants
-single_run <- creditools::run_simulation(
-  data = sample_data, 
-  policy = base_policy,
-  quiet = TRUE
-)
+single_run <- run_simulation(data = sample_data, policy = base_policy, quiet = TRUE)
 
-# Extract the granular data and inspect the first applicant who was a "Swap-In" (approved now, but rejected before)
-granular_base <- single_run$data
-granular_base %>% 
-  dplyr::filter(scenario == "swap_in") %>% 
-  dplyr::select(id, old_score, new_score, approved_credit_decision_new, approved_anti_fraud_new, new_approval, simulated_default) %>%
+single_run$data %>%
+  filter(scenario == "swap_in") %>%
+  select(id, old_score, new_score, new_approval, simulated_default) %>%
   head()
-#> # A tibble: 6 x 7
-#>      id old_score new_score approved_credit_decision_new approved_anti_fraud_new
-#>   <int>     <dbl>     <dbl>                        <int>                   <int>
-#> 1     4       346       913                            1                       1
-#> 2    29       417       775                            1                       1
-#> 3    35       271       663                            1                       1
-#> 4    66       422       964                            1                       1
-#> 5    70       240       775                            1                       1
-#> 6    83       393       827                            1                       1
-#> # i 2 more variables: new_approval <lgl>, simulated_default <int>
+#> # A tibble: 6 x 5
+#>      id old_score new_score new_approval simulated_default
+#>   <int>     <dbl>     <dbl> <lgl>                    <int>
+#> 1     4       346       913 TRUE                         0
+#> 2    29       417       775 TRUE                         0
+#> 3    35       271       663 TRUE                         1
 ```
 
-### 4. Run a Massively Parallel Trade-off Analysis
-
-We will define parameters to vary dynamically. We want to test different
-score cutoffs to see the “swap-in” effects, while also varying the base
-conversion rate and aggravating the default expectation for newly
-approved customers (a normal phenomena when exploring unsupervised score
-bands).
+### Parallel trade-off analysis
 
 ``` r
-# Define the simulation grid
-vary_params <- list(
-  new_score_cutoff = seq(450, 750, by = 50),
-  aggravation_factor = c(1.2, 1.5, 1.7) # 20%, 50% and 70% PD Uplift
-)
-
-# Run the parallel analysis!
-# `run_tradeoff_analysis` intercepts names like `*_base_rate` to dynamically override Funnel Stages
-tradeoff_results <- creditools::run_tradeoff_analysis(
-  data = sample_data,
+tradeoff_results <- run_tradeoff_analysis(
+  data        = sample_data,
   base_policy = base_policy,
-  vary_params = vary_params,
-  parallel = TRUE, # Using future multisession
-  quiet = TRUE
+  vary_params = list(
+    new_score_cutoff   = seq(450, 750, by = 50),
+    aggravation_factor = c(1.2, 1.5, 1.7)
+  ),
+  parallel = TRUE,
+  quiet    = TRUE
 )
 
 head(tradeoff_results)
@@ -221,114 +120,123 @@ head(tradeoff_results)
 #>              <dbl>              <dbl>         <dbl>        <dbl>
 #> 1              450                1.2         0.286       0.0781
 #> 2              450                1.5         0.286       0.0828
-#> 3              450                1.7         0.285       0.0865
-#> 4              500                1.2         0.285       0.0776
-#> 5              500                1.5         0.286       0.0828
-#> 6              500                1.7         0.286       0.0866
+#> 3              500                1.2         0.285       0.0776
 ```
 
-### 5. Visualize the Results
-
-The results provide a data frame mapping out an efficient frontier. This
-clearly highlights how migrating to `new_score` mitigates default risk
-depending on the selected cutoff, and showcases the conservative
-aggravation impacts on business volume.
+### Visualize the efficient frontier
 
 ``` r
 tradeoff_results %>%
-  mutate(Stress = paste0("+", round((aggravation_factor - 1) * 100), "% PD Aggravation")) %>%
+  mutate(Stress = paste0("+", round((aggravation_factor - 1) * 100), "% PD")) %>%
   ggplot(aes(x = approval_rate, y = default_rate, color = Stress)) +
-  geom_line(size = 1.2) +
+  geom_line(linewidth = 1.2) +
   geom_point(aes(size = new_score_cutoff), alpha = 0.8) +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 1)) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 0.1)) +
   labs(
-    title = "Efficient Frontier: Migrating to 'New Score'",
-    subtitle = "Trade-off analysis for > 1.5M applicants adjusting for Conversion funnels and PD Aggravations",
-    x = "Overall Approval Volume (End of Funnel Rate)", 
-    y = "Average Default Rate (%)",
-    size = "New Score Cutoff"
+    title    = "Efficient Frontier: Migrating to New Score",
+    subtitle = "> 1.5M applicants | Multi-stage funnel | Custom PD stress",
+    x = "Approval Rate", y = "Default Rate", size = "Cutoff"
   ) +
-  scale_x_continuous(labels = scales::percent_format(accuracy=1)) +
-  scale_y_continuous(labels = scales::percent_format(accuracy=0.1)) +
-  theme_minimal(base_size = 14) +
-  theme(legend.position = "bottom")
+  theme_minimal(base_size = 14)
 ```
 
-<img src="man/figures/README-example-plot-1.png" width="100%" />
+<img src="man/figures/README-example-plot-1.png" width="100%"/>
 
-## Advanced Analytics: Hard Filters & Risk Based Pricing (RBP)
+---
 
-Beyond point-in-time simulations, `creditools` operates as a robust
-**Risk Matrix Engine**. Modern credit departments often need to answer:
-*“Should I replace my primary score with this new provider, or matrix
-them both into a combined stable Risk Tier?”*
+## Example 2: Hard Filters + Risk Based Pricing Matrix
 
-The `find_risk_groups()` heuristic engine solves exactly this. It
-automatically bins N-scores into intersecting dimensions, calculates
-empirical risk, merges tiny pockets of poplation (`min_vol_ratio`), and
-**prunes any groups with high PD volatility across vintages** to
-guarantee perfectly stable horizontal curves over time
-(`max_volatility_cv`). Furthermore, you can apply categorical rules
-(`stage_filter`) prior to evaluation.
+`find_risk_groups()` runs a **Ward Agglomerative Clustering** algorithm
+on any combination of scores. It merges bins iteratively using the Ward
+distance:
 
-Let’s simulate a massive dataset with categorical constraints and search
-for Risk Tiers evaluating the combined predictive power of our 2 scores.
+$$\Delta_{A,B} = \frac{V_A \cdot V_B}{V_A + V_B}(PD_A - PD_B)^2$$
 
-### 1. Hard Filters & Finding Stable Risk Tiers
+Merges are only accepted if all three constraints hold:
+
+| Priority | Constraint | Parameter |
+|---|---|---|
+| 1 | Monotonicity — PD must increase with group | automatic |
+| 2 | Minimum volume per group | `min_vol_ratio` |
+| 3 | Max inter-group crossings over time | `max_crossings` |
+| 4 | Tail compression (optional cap) | `max_groups` |
+
+The `max_crossings` parameter uses **absolute count of months** where
+two adjacent groups invert — making it robust to small vintage windows
+(6–18 months). Setting `max_crossings = 1` means at most 1 month of
+inversion is tolerated before a forced merge.
+
+### Filter approved population, then cluster
 
 ``` r
-# Let's say we only want to evaluate the matrix on "Valid" segments that passed a basic 300 points Cutoff on our internal Score A.
+# 1. Apply hard filters (categorical + score cutoff)
 advanced_policy <- credit_policy(
-  applicant_id_col = "id",
-  score_cols = c("old_score", "new_score"),
+  applicant_id_col     = "id",
+  score_cols           = c("old_score", "new_score"),
   current_approval_col = "approved",
-  actual_default_col = "defaulted",
-  risk_level_col = "new_score_decile",
-  simulation_stages = list(
-    # Stage 1: Categorical Filter (Dynamic execution)
-    stage_filter(name = "status_filter", condition = "status == 'Approved'"),
-    # Stage 2: Pre-Cutoff Screen
-    stage_cutoff(name = "baseline", cutoffs = list(old_score = 300))
+  actual_default_col   = "defaulted",
+  simulation_stages    = list(
+    stage_filter("valid_segment", condition = "status == 'Approved'"),
+    stage_cutoff("baseline",      cutoffs   = list(old_score = 300))
   )
 )
 
-# Pass the data through the hard filters first
-filtered_candidates <- run_simulation(sample_data, advanced_policy, quiet = TRUE)$data %>% dplyr::filter(new_approval == TRUE)
+approved_base <- run_simulation(sample_data, advanced_policy, quiet = TRUE)$data %>%
+  filter(new_approval == TRUE)
 
-# After isolating the approved funnel, we apply the clustering engine!
-# We set `oot_date` to blindly validate our hierarchy outside of the train months.
-rbp_matrix_results <- creditools::find_risk_groups(
-    data = filtered_candidates, 
-    score_cols = c("old_score", "new_score"), # Combining both!
-    default_col = "defaulted", 
-    time_col = "vintage_month",
-    time_col_format = "%Y-%m", # Strict Date parsing
-    bins = 10,                 # Starts as a 10x10 matrix (100 pockets)
-    min_vol_ratio = 0.05,      # Groups cannot be smaller than 5%
-    max_volatility_cv = 0.20,  # Tolerates maximum 20% of PD Volatility (CV) per Vintage compared to the Average
-    oot_date = "2023-11"       # Preserves Nov/Dec for Out-Of-Time validation!
+# 2. Run Ward Agglomerative Clustering on approved population
+# Best practice: train on approved totals (includes defaulters) —
+# this preserves the PD signal while removing the rejected left-tail.
+rbp_result <- find_risk_groups(
+  data          = approved_base,
+  score_cols    = c("old_score", "new_score"),
+  default_col   = "defaulted",
+  time_col      = "vintage_month",  # Must be Date or POSIXt
+  bins          = 10,               # 10x10 = 100 initial cells
+  min_vol_ratio = 0.05,             # Groups must be >= 5% of population
+  max_crossings = 1L,               # At most 1 month of PD inversion allowed
+  max_groups    = 7,                # Compress tail into at most 7 groups
+  oot_date      = as.Date("2023-11-01")  # Hold-out for OOT validation
 )
 
-# How many stable groups did it find?
-print(rbp_matrix_results$report)
-#> # A tibble: 34 x 4
+# 3. Inspect the output
+rbp_result$report
+#> # A tibble: 14 x 4
 #>    risk_rating period total_vol avg_pd
 #>          <int> <chr>      <int>  <dbl>
 #>  1           1 Train      37790 0.0512
 #>  2           2 Train      31530 0.0611
 #>  3           3 Train      38670 0.0655
-#>  4           4 Train      36900 0.0708
-#>  5           5 Train      30357 0.0751
-#>  6           6 Train      31291 0.0809
-#>  7           7 Train      33472 0.0839
-#>  8           8 Train      32069 0.0866
-#>  9           9 Train      36368 0.0880
-#> 10          10 Train      34651 0.0914
-#> # i 24 more rows
+#>  ...
+#>  8           1 OOT        18202 0.0509
 ```
 
-The resulting `rbp_matrix_results$data` comes pre-attached with
-`risk_rating` (from 1 to N), mapping perfectly to your custom Risk Based
-Pricing matrix. The results clearly demonstrate if swapping or matrixing
-scores offers more granular risk differentiation without vintage
-intersections. This saves weeks of manual SAS/SQL matrix
-cross-validations!
+The output `$data` comes pre-attached with `risk_rating` (1..N),
+mapping directly to your RBP pricing table. The `$report` validates
+monotonicity and volume in both Train and OOT periods.
+
+---
+
+## Function Reference
+
+| Function | Purpose |
+|---|---|
+| `generate_sample_data()` | Generate synthetic applicant data for testing |
+| `credit_policy()` | Define a credit simulation configuration |
+| `stage_cutoff()` | Score-based hard cutoff stage |
+| `stage_rate()` | Probabilistic pass-rate stage (e.g. conversion, fraud) |
+| `stage_filter()` | SQL-style categorical filter stage |
+| `stress_aggravation()` | Stress scenario: multiply PD by a factor per segment |
+| `run_simulation()` | Execute one credit policy over a dataset |
+| `run_tradeoff_analysis()` | Grid-sweep trade-off analysis (parallel-ready) |
+| `summarize_results()` | Aggregate simulation output by scenario and grouping |
+| `find_risk_groups()` | Ward Agglomerative Clustering for stable RBP risk tiers |
+
+---
+
+## Getting Help
+
+- See the full [case study vignette](vignettes/case-study-used-vehicles.html)
+  for a real-world walk-through with 5M applicants and 15 vintages.
+- File issues on [GitHub](https://github.com/matheuspasche/creditools/issues).
