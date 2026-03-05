@@ -286,7 +286,10 @@ simulate_swap_in_defaults <- function(data, policy) {
   }
 
   if (length(policy$stress_scenarios) == 0) {
-    cli::cli_alert_warning("No stress scenarios defined for swap-in defaults. Default outcomes will be NA.")
+    if (is.null(getOption("creditools.warn_no_stress"))) {
+      cli::cli_alert_warning("No stress scenarios defined for swap-in defaults. Default outcomes will be NA.")
+      options(creditools.warn_no_stress = TRUE)
+    }
 
     res_df <- tibble::tibble(
       tmp_id = swap_ins[[policy$applicant_id_col]],

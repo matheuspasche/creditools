@@ -123,17 +123,34 @@ rg_M <- find_risk_groups(
 )
 
 cat("7. Exporting CSV with complex funnel flags and clusters...\n")
-export <- sim_B$data %>%
-    select(
-        id, current_score, new_score, age, neg_registry, vintage,
-        approved, defaulted, scenario,
-        approved_cpf_new, approved_age_new, approved_neg_new,
-        approved_credit_new, approved_fraud_new, approved_desk_new,
-        new_approval, simulated_default
+export <- base_data %>%
+    select(id, current_score, new_score, age, neg_registry, vintage,
+        approved_base = approved, defaulted_base = defaulted
     ) %>%
-    left_join(rg_B$data %>% select(id, risk_rating_new_score = risk_rating), by = "id") %>%
+    left_join(
+        sim_A$data %>% select(
+            id,
+            cpf_A = approved_cpf_new, age_A = approved_age_new, neg_A = approved_neg_new,
+            credit_A = approved_credit_new, fraud_A = approved_fraud_new, conversion_A = approved_desk_new,
+            final_approval_A = new_approval, simulated_default_A = simulated_default,
+            scenario_A = scenario
+        ),
+        by = "id"
+    ) %>%
+    left_join(
+        sim_B$data %>% select(
+            id,
+            cpf_B = approved_cpf_new, age_B = approved_age_new, neg_B = approved_neg_new,
+            credit_B = approved_credit_new, fraud_B = approved_fraud_new, conversion_B = approved_desk_new,
+            final_approval_B = new_approval, simulated_default_B = simulated_default,
+            scenario_B = scenario
+        ),
+        by = "id"
+    ) %>%
+    left_join(rg_B$data %>% select(id, risk_rating_B = risk_rating), by = "id") %>%
     left_join(rg_M$data %>% select(id, risk_rating_matrix = risk_rating), by = "id")
 
-out_path <- "C:/Users/Matheus/Documents/case_study_export_complex.csv"
-readr::write_csv2(export, out_path)
+out_path <- "C:/Users/Matheus/Documents/case_study_export_complex.xlsx"
+if (!requireNamespace("writexl", quietly = TRUE)) install.packages("writexl", repos = "https://cloud.r-project.org")
+writexl::write_xlsx(export, out_path)
 cat("SUCCESS! Exported", nrow(export), "rows to:", out_path, "\n")
