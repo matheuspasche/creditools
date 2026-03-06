@@ -66,14 +66,13 @@ make_policy_A <- function(cutoff = 300) {
 make_policy_B <- function(cutoff = 300) {
     p <- credit_policy(
         applicant_id_col = "id", score_cols = "new_score", current_approval_col = "approved", actual_default_col = "defaulted",
+        risk_level_col = "risk_decile",
         simulation_stages = c(hf, list(
             stage_cutoff(name = "credit", cutoffs = setNames(list(cutoff), "new_score")),
             fraud, stage_rate(name = "desk", base_rate = 0.50)
         ))
     )
-    p$stress_scenarios <- list(stress_custom(function(swap_ins) {
-        pmin(swap_ins$pd_new * 1.30, 1)
-    }))
+    p$stress_scenarios <- list(stress_aggravation(factor = 1.30, by = "risk_decile"))
     p
 }
 
@@ -82,14 +81,13 @@ make_policy_M <- function(cutoff = 300) {
     # Approves if sum of scores >= 2 * cutoff
     p <- credit_policy(
         applicant_id_col = "id", score_cols = c("current_score", "new_score"), current_approval_col = "approved", actual_default_col = "defaulted",
+        risk_level_col = "risk_decile",
         simulation_stages = c(hf, list(
             stage_filter(name = "credit", condition = sprintf("(current_score + new_score) >= %d", cutoff * 2)),
             fraud, stage_rate(name = "desk", base_rate = 0.50)
         ))
     )
-    p$stress_scenarios <- list(stress_custom(function(swap_ins) {
-        pmin(swap_ins$pd_new * 1.30, 1)
-    }))
+    p$stress_scenarios <- list(stress_aggravation(factor = 1.30, by = "risk_decile"))
     p
 }
 
@@ -171,5 +169,21 @@ export <- base_data %>%
 
 out_path <- "C:/Users/Matheus/Documents/case_study_export_complex_v3.xlsx"
 if (!requireNamespace("writexl", quietly = TRUE)) install.packages("writexl", repos = "https://cloud.r-project.org")
-writexl::write_xlsx(export, out_path)
+
+save_success <- tryCatch(
+    {
+        writexl::write_xlsx(export, out_path)
+        TRUE
+    },
+    error = function(e) {
+        FALSE
+    }
+)
+
+if (!save_success) {
+    out_path <- sprintf("C:/Users/Matheus/Documents/case_study_export_complex_v3_%s.xlsx", format(Sys.time(), "%H%M%S"))
+    cat("   ! Permission denied on standard file. Saving to new path to prevent data loss...\n")
+    writexl::write_xlsx(export, out_path)
+}
+
 cat(sprintf("   Done! Exported to %s\n", out_path))
