@@ -48,13 +48,18 @@ fraud <- stage_rate(name = "fraud", base_rate = 0.98)
 
 # Baseline Policy (Current Score)
 make_policy_A <- function(cutoff = 300) {
-    credit_policy(
+    p <- credit_policy(
         applicant_id_col = "id", score_cols = "current_score", current_approval_col = "approved", actual_default_col = "defaulted",
         simulation_stages = c(hf, list(
             stage_cutoff(name = "credit", cutoffs = setNames(list(cutoff), "current_score")),
             fraud, stage_rate(name = "desk", base_rate = 0.50)
         ))
     )
+    # Pass-through stress to retain EXACT `defaulted` flags for swap_ins that otherwise would be NA
+    p$stress_scenarios <- list(stress_custom(function(swap_ins) {
+        as.numeric(swap_ins$defaulted)
+    }))
+    p
 }
 
 # Challenger Policy (New Score)
