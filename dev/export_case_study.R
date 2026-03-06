@@ -28,13 +28,14 @@ base_pd <- plogis(-3.8 + (-1.5) * z)
 defaulted <- as.integer(stats::runif(n) < base_pd)
 
 decile <- ntile(current_score, 10)
+decile_new <- ntile(new_score, 10)
 appr_prob <- c(0.05, 0.08, 0.12, 0.17, 0.22, 0.28, 0.35, 0.42, 0.50, 0.60)
 approved <- as.integer(stats::runif(n) < appr_prob[decile])
 
 base_data <- data.frame(
     id = 1:n, current_score, new_score, cpf_valid, age,
     neg_registry = round(neg_reg, 2), vintage, defaulted, approved,
-    risk_decile = decile, z = z, pd_new = base_pd # Storing pd_new and z to use in stress_custom
+    risk_decile = decile, risk_decile_new = decile_new, z = z, pd_new = base_pd
 )
 
 cat("2. Defining complex multi-stage policies...\n")
@@ -66,13 +67,13 @@ make_policy_A <- function(cutoff = 300) {
 make_policy_B <- function(cutoff = 300) {
     p <- credit_policy(
         applicant_id_col = "id", score_cols = "new_score", current_approval_col = "approved", actual_default_col = "defaulted",
-        risk_level_col = "risk_decile",
+        risk_level_col = "risk_decile_new",
         simulation_stages = c(hf, list(
             stage_cutoff(name = "credit", cutoffs = setNames(list(cutoff), "new_score")),
             fraud, stage_rate(name = "desk", base_rate = 0.50)
         ))
     )
-    p$stress_scenarios <- list(stress_aggravation(factor = 1.30, by = "risk_decile"))
+    p$stress_scenarios <- list(stress_aggravation(factor = 1.30, by = "risk_decile_new"))
     p
 }
 
@@ -159,7 +160,7 @@ rg_M_groups <- find_risk_groups(data = sim_M$data %>% filter(new_approval == 1),
 
 cat("9. Exporting CSV with complex funnel flags and clusters...\n")
 export <- base_data %>%
-    select(id, current_score, new_score, age, neg_registry, vintage, approved_historical = approved, defaulted_true = defaulted) %>%
+    select(id, current_score, risk_decile, new_score, risk_decile_new, age, neg_registry, vintage, approved_historical = approved, defaulted_true = defaulted) %>%
     left_join(sim_A$data %>% select(id, cpf_A = approved_cpf_new, age_A = approved_age_new, neg_A = approved_neg_new, credit_A = approved_credit_new, fraud_A = approved_fraud_new, conversion_A = approved_desk_new, approval_A = new_approval, default_A = simulated_default, scenario_A = scenario), by = "id") %>%
     left_join(sim_B$data %>% select(id, cpf_B = approved_cpf_new, age_B = approved_age_new, neg_B = approved_neg_new, credit_B = approved_credit_new, fraud_B = approved_fraud_new, conversion_B = approved_desk_new, approval_B = new_approval, default_B = simulated_default, scenario_B = scenario), by = "id") %>%
     left_join(sim_M$data %>% select(id, cpf_M = approved_cpf_new, age_M = approved_age_new, neg_M = approved_neg_new, credit_M = approved_credit_new, fraud_M = approved_fraud_new, conversion_M = approved_desk_new, approval_M = new_approval, default_M = simulated_default, scenario_M = scenario), by = "id") %>%
