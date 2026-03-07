@@ -30,3 +30,6 @@ vignettes/.gitignore
 # Package build artifacts
 /*.tar.gz
 /*.Rcheck/
+
+# Handoff docs
+HANDOVER_v0.4.0.md

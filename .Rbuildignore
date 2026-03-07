@@ -24,3 +24,4 @@
 ^.*\.csv$
 ^.*\.png$
 ^.*\.tar\.gz$
+^HANDOVER_v0\.4\.0\.md$
