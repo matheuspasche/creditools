@@ -4,7 +4,7 @@
 \alias{simulate_stage}
 \title{Generic function to simulate a single stage}
 \usage{
-simulate_stage(data, stage, policy)
+simulate_stage(data, stage, policy, method = c("stochastic", "analytical"))
 }
 \description{
 Generic function to simulate a single stage

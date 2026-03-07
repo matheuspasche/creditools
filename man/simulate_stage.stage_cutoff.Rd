@@ -4,7 +4,7 @@
 \alias{simulate_stage.stage_cutoff}
 \title{Simulate a cutoff-based stage}
 \usage{
-\method{simulate_stage}{stage_cutoff}(data, stage, policy)
+\method{simulate_stage}{stage_cutoff}(data, stage, policy, method = c("stochastic", "analytical"))
 }
 \description{
 Simulate a cutoff-based stage

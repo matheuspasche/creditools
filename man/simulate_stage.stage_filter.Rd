@@ -4,7 +4,7 @@
 \alias{simulate_stage.stage_filter}
 \title{Simulate a hard-filter stage (Binary Rules)}
 \usage{
-\method{simulate_stage}{stage_filter}(data, stage, policy)
+\method{simulate_stage}{stage_filter}(data, stage, policy, method = c("stochastic", "analytical"))
 }
 \description{
 Simulate a hard-filter stage (Binary Rules)

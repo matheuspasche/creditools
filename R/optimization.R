@@ -18,9 +18,9 @@
 #'   The range is from the min to the max score in the data.
 #' @param target_default_rate The maximum acceptable overall default rate for the approved population.
 #' @param min_approval_rate The minimum acceptable overall approval rate.
+#' @param method The simulation method: `"stochastic"` (default) for row-by-row sampling
+#'   or `"analytical"` for expected value calculation (reweighting).
 #' @param parallel A logical flag indicating whether to use parallel processing.
-#'   Requires the `future` and `furrr` packages.
-#' @param n_cores The number of cores to use for parallel processing. Defaults to
 #'   all available cores minus one.
 #'
 #' @return A data frame with the single best combination of cutoffs found, along
@@ -63,8 +63,10 @@ find_optimal_cutoffs <- function(data, config,
                                  cutoff_steps = 10,
                                  target_default_rate = 0.05,
                                  min_approval_rate = 0.3,
+                                 method = c("stochastic", "analytical"),
                                  parallel = FALSE,
                                  n_cores = NULL) {
+  method <- match.arg(method)
 
   validate_optimization_inputs(data, config, cutoff_steps, target_default_rate, min_approval_rate)
 
@@ -73,7 +75,7 @@ find_optimal_cutoffs <- function(data, config,
 
   # Evaluate all cutoff combinations
   results <- evaluate_cutoff_combinations(
-    data, config, cutoff_ranges, target_default_rate, min_approval_rate, parallel, n_cores
+    data, config, cutoff_ranges, target_default_rate, min_approval_rate, method, parallel, n_cores
   )
 
   # Find the best result from the evaluations
@@ -132,7 +134,9 @@ generate_cutoff_ranges <- function(data, score_columns, cutoff_steps) {
 #' @keywords internal
 evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
                                          target_default_rate, min_approval_rate,
+                                         method = c("stochastic", "analytical"),
                                          parallel = FALSE, n_cores = NULL) {
+  method <- match.arg(method)
   cutoff_combinations <- expand.grid(cutoff_ranges) %>%
     tibble::as_tibble(.name_repair = "unique_quiet") %>%
     dplyr::mutate(combination_id = dplyr::row_number())
@@ -154,7 +158,7 @@ evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
   
   results <- eval_fun(
     1:nrow(cutoff_combinations),
-    ~ evaluate_single_combination(.x, cutoff_combinations, data, config, target_default_rate, min_approval_rate),
+    ~ evaluate_single_combination(.x, cutoff_combinations, data, config, target_default_rate, min_approval_rate, method),
     .progress = TRUE,
     .options = if (parallel) furrr::furrr_options(seed = TRUE) else NULL
   )
@@ -164,7 +168,9 @@ evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
 
 #' @keywords internal
 evaluate_single_combination <- function(combo_id, cutoff_combinations, data, config,
-                                        target_default_rate, min_approval_rate) {
+                                        target_default_rate, min_approval_rate,
+                                        method = c("stochastic", "analytical")) {
+  method <- match.arg(method)
   cutoffs <- cutoff_combinations[combo_id, ] %>%
     dplyr::select(-combination_id) %>%
     as.list()
@@ -175,11 +181,11 @@ evaluate_single_combination <- function(combo_id, cutoff_combinations, data, con
   cutoff_stage <- stage_cutoff(name = "optimization_credit", cutoffs = cutoffs)
   temp_policy$simulation_stages <- c(list(cutoff_stage), temp_policy$simulation_stages)
 
-  # Run the full multi-stage simulation
-  sim_results <- run_simulation(data, temp_policy)
+  # Run the full multi-stage simulation with chosen method
+  sim_results <- run_simulation(data, temp_policy, method = method)
 
   # Calculate performance metrics from the final simulation results
-  metrics <- calculate_metrics(sim_results$data)
+  metrics <- calculate_metrics(sim_results$data, method = method)
 
   constraints_met <- all(
     metrics$overall_default_rate <= target_default_rate,
@@ -202,18 +208,38 @@ evaluate_single_combination <- function(combo_id, cutoff_combinations, data, con
 }
 
 #' @keywords internal
-calculate_metrics <- function(sim_data) {
-  # Calculate overall approval rate from the final `new_approval` flag
-  approval_rate <- mean(sim_data$new_approval, na.rm = TRUE)
+calculate_metrics <- function(sim_data, method = c("stochastic", "analytical")) {
+  method <- match.arg(method)
+  
+  if (method == "stochastic") {
+    # Calculate overall approval rate from the final `new_approval` flag
+    approval_rate <- mean(sim_data$new_approval, na.rm = TRUE)
 
-  # Filter for the population that was actually approved under the new policy
-  approved_population <- sim_data[sim_data$new_approval == TRUE & !is.na(sim_data$new_approval), ]
+    # Filter for the population that was actually approved under the new policy
+    approved_population <- sim_data[sim_data$new_approval == TRUE & !is.na(sim_data$new_approval), ]
 
-  # Calculate default rate ONLY on the approved population
-  if (nrow(approved_population) > 0) {
-    default_rate <- mean(approved_population$simulated_default, na.rm = TRUE)
+    # Calculate default rate ONLY on the approved population
+    if (nrow(approved_population) > 0) {
+      default_rate <- mean(approved_population$simulated_default, na.rm = TRUE)
+    } else {
+      default_rate <- 0 # No one approved, so 0 defaults
+    }
   } else {
-    default_rate <- 0 # No one approved, so 0 defaults
+    # Analytical: Expected values
+    # approval_rate is the mean of probabilities
+    approval_rate <- mean(sim_data$new_approval, na.rm = TRUE)
+    
+    # default_rate is the sum of expected bads / sum of expected volumes
+    # We must only sum new_approval where simulated_default is not NA,
+    # to match the behavior of mean(..., na.rm = TRUE)
+    has_outcome <- !is.na(sim_data$simulated_default)
+    exp_hired_with_outcome <- sum(sim_data$new_approval[has_outcome], na.rm = TRUE)
+    
+    if (exp_hired_with_outcome > 0) {
+        default_rate <- sum(sim_data$simulated_default[has_outcome], na.rm = TRUE) / exp_hired_with_outcome
+    } else {
+        default_rate <- 0
+    }
   }
 
   list(

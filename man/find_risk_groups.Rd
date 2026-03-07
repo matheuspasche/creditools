@@ -8,7 +8,7 @@ find_risk_groups(
   data,
   score_cols,
   default_col,
-  time_col,
+  time_col = NULL,
   min_vol_ratio = 0.05,
   max_crossings = 1L,
   bins = 20,

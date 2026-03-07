@@ -14,6 +14,7 @@ simulate_from_data(
   actual_default_col = "defaulted",
   new_score_cutoff,
   aggravation_factor = 1.3,
+  method = c("stochastic", "analytical"),
   time_col = NULL
 )
 }
@@ -35,6 +36,9 @@ simulate_from_data(
 \item{new_score_cutoff}{The threshold for the challenger score to approve an applicant.}
 
 \item{aggravation_factor}{The +X\% stress applied to Swap-Ins (defaults to 1.30 for 30\% penalty).}
+
+\item{method}{The simulation method: \code{"stochastic"} (default) for row-by-row sampling
+or \code{"analytical"} for expected value calculation (reweighting).}
 
 \item{time_col}{Optional. Name of the vintage/date column to ensure temporal stability in Risk Groups.}
 }

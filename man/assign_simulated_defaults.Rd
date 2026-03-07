@@ -4,7 +4,7 @@
 \alias{assign_simulated_defaults}
 \title{Assign default outcomes for the final approved population}
 \usage{
-assign_simulated_defaults(data, policy)
+assign_simulated_defaults(data, policy, method = c("stochastic", "analytical"))
 }
 \description{
 Assign default outcomes for the final approved population

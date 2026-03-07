@@ -4,7 +4,7 @@
 \alias{simulate_stage.stage_rate}
 \title{Simulate a rate-based stage (e.g., conversion)}
 \usage{
-\method{simulate_stage}{stage_rate}(data, stage, policy)
+\method{simulate_stage}{stage_rate}(data, stage, policy, method = c("stochastic", "analytical"))
 }
 \description{
 Simulate a rate-based stage (e.g., conversion)

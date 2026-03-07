@@ -10,6 +10,7 @@ find_optimal_cutoffs(
   cutoff_steps = 10,
   target_default_rate = 0.05,
   min_approval_rate = 0.3,
+  method = c("stochastic", "analytical"),
   parallel = FALSE,
   n_cores = NULL
 )
@@ -27,10 +28,10 @@ The range is from the min to the max score in the data.}
 
 \item{min_approval_rate}{The minimum acceptable overall approval rate.}
 
-\item{parallel}{A logical flag indicating whether to use parallel processing.
-Requires the \code{future} and \code{furrr} packages.}
+\item{method}{The simulation method: \code{"stochastic"} (default) for row-by-row sampling
+or \code{"analytical"} for expected value calculation (reweighting).}
 
-\item{n_cores}{The number of cores to use for parallel processing. Defaults to
+\item{parallel}{A logical flag indicating whether to use parallel processing.
 all available cores minus one.}
 }
 \value{

@@ -16,6 +16,8 @@
 #' @family simulation
 #' @export
 #'
+#' @param method The simulation method: `"stochastic"` (default) for row-by-row sampling
+#'   or `"analytical"` for expected value calculation (reweighting).
 #' @param quiet Whether to suppress progress and status messages. Default is FALSE.
 #'
 #' @examples
@@ -44,7 +46,8 @@
 #'
 #' # 4. Summarize the results by scenario
 #' summarize_results(results)
-run_simulation <- function(data, policy, quiet = FALSE) {
+run_simulation <- function(data, policy, method = c("stochastic", "analytical"), quiet = FALSE) {
+  method <- match.arg(method)
   validate_simulation_inputs(data, policy)
 
   # This will hold the logical vector of approvals at each stage
@@ -62,33 +65,52 @@ run_simulation <- function(data, policy, quiet = FALSE) {
     stage_output_col <- paste0("approved_", stage$name, "_new")
     stage_approval_cols[[i]] <- stage_output_col
 
-    # Eligibility for the current stage is passing all *previous* new stages
-    if (i == 1) {
-      is_eligible <- rep(TRUE, nrow(data))
-    } else {
-      # Get the logical vectors for all previous stages, handling NAs
-      prev_approvals <- purrr::map(data[unlist(stage_approval_cols[1:(i - 1)])], function(col) col == 1 & !is.na(col))
-      is_eligible <- Reduce(`&`, prev_approvals)
-    }
+    if (method == "stochastic") {
+      # Eligibility for the current stage is passing all *previous* new stages
+      if (i == 1) {
+        is_eligible <- rep(TRUE, nrow(data))
+      } else {
+        prev_approvals <- purrr::map(data[unlist(stage_approval_cols[1:(i - 1)])], function(col) col == 1 & !is.na(col))
+        is_eligible <- Reduce(`&`, prev_approvals)
+      }
 
-    # Simulate the current stage ONLY for the eligible population
-    data[[stage_output_col]] <- NA_integer_
-    if (any(is_eligible)) {
-      data[is_eligible, stage_output_col] <- simulate_stage(data[is_eligible, ], stage, policy)
+      data[[stage_output_col]] <- NA_integer_
+      if (any(is_eligible)) {
+        data[is_eligible, stage_output_col] <- simulate_stage(data[is_eligible, ], stage, policy, method = "stochastic")
+      }
+    } else {
+      # Analytical mode: accumulate probabilities
+      # We don't filter rows, we calculate p(pass) for all rows
+      # For optimization, we only calculate for rows where p(pass) > 0
+      if (i == 1) {
+        data$pass_prob_funnel <- 1.0
+      }
+
+      # Probability of passing THIS stage
+      data[[stage_output_col]] <- simulate_stage(data, stage, policy, method = "analytical")
+
+      # Probability of passing THE FUNNEL so far
+      data$pass_prob_funnel <- data$pass_prob_funnel * data[[stage_output_col]]
     }
   }
 
   if (!quiet && exists("pb")) cli::cli_progress_done(id = pb)
 
   # Determine final approval status under the new policy
-  final_approval_flags <- purrr::map(data[unlist(stage_approval_cols)], function(col) col == 1 & !is.na(col))
-  data$new_approval <- as.integer(Reduce(`&`, final_approval_flags))
+  if (method == "stochastic") {
+    final_approval_flags <- purrr::map(data[unlist(stage_approval_cols)], function(col) col == 1 & !is.na(col))
+    data$new_approval <- as.integer(Reduce(`&`, final_approval_flags))
+  } else {
+    # In analytical mode, new_approval IS the pass_prob_funnel
+    data$new_approval <- data$pass_prob_funnel
+    data$pass_prob_funnel <- NULL # cleanup
+  }
 
   # Classify scenarios based on old vs. new final approval
   data <- classify_scenarios(data, policy, "new_approval")
 
   # Assign default outcomes for the newly approved population
-  data <- assign_simulated_defaults(data, policy)
+  data <- assign_simulated_defaults(data, policy, method = method)
 
   if (!quiet) cli::cli_alert_success("Multi-stage simulation completed for {nrow(data)} applicants.")
 
@@ -110,14 +132,15 @@ run_simulation <- function(data, policy, quiet = FALSE) {
 #' Generic function to simulate a single stage
 #' @keywords internal
 #' @export
-simulate_stage <- function(data, stage, policy) {
+simulate_stage <- function(data, stage, policy, method = c("stochastic", "analytical")) {
   UseMethod("simulate_stage", stage)
 }
 
 #' Simulate a cutoff-based stage
 #' @keywords internal
 #' @exportS3Method simulate_stage stage_cutoff
-simulate_stage.stage_cutoff <- function(data, stage, policy) {
+simulate_stage.stage_cutoff <- function(data, stage, policy, method = c("stochastic", "analytical")) {
+  method <- match.arg(method)
   # Create a matrix of approval decisions for each score in this stage
   approval_matrix <- purrr::map_dfc(names(stage$cutoffs), function(score_col) {
     res <- data[[score_col]] >= stage$cutoffs[[score_col]]
@@ -131,7 +154,8 @@ simulate_stage.stage_cutoff <- function(data, stage, policy) {
 #' Simulate a rate-based stage (e.g., conversion)
 #' @keywords internal
 #' @exportS3Method simulate_stage stage_rate
-simulate_stage.stage_rate <- function(data, stage, policy) {
+simulate_stage.stage_rate <- function(data, stage, policy, method = c("stochastic", "analytical")) {
+  method <- match.arg(method)
 
   # Default to an empty vector of results
   stage_outcome <- integer(nrow(data))
@@ -175,8 +199,20 @@ simulate_stage.stage_rate <- function(data, stage, policy) {
     prob <- stage$base_rate
   }
 
-  # Simulate the outcome for swap-ins
-  simulated_outcome <- as.integer(stats::runif(nrow(swap_ins_data)) < prob)
+  # If method is analytical, return probabilities [0, 1] for all rows
+  if (method == "analytical") {
+    analytical_prob <- numeric(nrow(data))
+    # Keep-ins have prob = 1 (if they had observed outcome)
+    if (exists("keep_in_idx")) {
+      analytical_prob[keep_in_idx] <- 1
+    }
+    # Swap-ins have the calculated prob
+    analytical_prob[swap_in_idx] <- prob
+    return(analytical_prob)
+  }
+
+  # Stochastic mode: Simulate the outcome
+  simulated_outcome <- as.integer(stats::runif(length(swap_in_idx)) < prob)
   stage_outcome[swap_in_idx] <- simulated_outcome
 
   return(stage_outcome)
@@ -185,7 +221,8 @@ simulate_stage.stage_rate <- function(data, stage, policy) {
 #' Simulate a hard-filter stage (Binary Rules)
 #' @keywords internal
 #' @exportS3Method simulate_stage stage_filter
-simulate_stage.stage_filter <- function(data, stage, policy) {
+simulate_stage.stage_filter <- function(data, stage, policy, method = c("stochastic", "analytical")) {
+  method <- match.arg(method)
   # Evaluate the string condition against the subset of eligible data
   # using base R eval to allow things like "idade > 18 & status == 'Válido'"
   tryCatch(
@@ -272,8 +309,9 @@ classify_scenarios <- function(data, policy, new_approval_col) {
 
 #' Assign default outcomes for the final approved population
 #' @keywords internal
-assign_simulated_defaults <- function(data, policy) {
-  swap_in_defaults <- simulate_swap_in_defaults(data, policy)
+assign_simulated_defaults <- function(data, policy, method = c("stochastic", "analytical")) {
+  method <- match.arg(method)
+  swap_in_defaults <- simulate_swap_in_defaults(data, policy, method = method)
 
   if (nrow(swap_in_defaults) > 0) {
     data <- dplyr::left_join(data, swap_in_defaults, by = policy$applicant_id_col)
@@ -293,7 +331,8 @@ assign_simulated_defaults <- function(data, policy) {
 
 #' Simulate default outcomes for swap-in applicants
 #' @keywords internal
-simulate_swap_in_defaults <- function(data, policy) {
+simulate_swap_in_defaults <- function(data, policy, method = c("stochastic", "analytical")) {
+  method <- match.arg(method)
   swap_ins <- data[data$scenario == "swap_in" & !is.na(data$scenario), ]
 
   if (nrow(swap_ins) == 0) {
@@ -308,7 +347,7 @@ simulate_swap_in_defaults <- function(data, policy) {
 
     res_df <- tibble::tibble(
       tmp_id = swap_ins[[policy$applicant_id_col]],
-      swap_in_default = NA_integer_
+      swap_in_default = NA_real_
     )
     colnames(res_df)[1] <- policy$applicant_id_col
     return(res_df)
@@ -333,8 +372,13 @@ simulate_swap_in_defaults <- function(data, policy) {
   final_prob[is.infinite(final_prob)] <- 1
   final_prob <- pmin(pmax(final_prob, 0), 1)
 
-  # Simulate default based on the final probability
-  simulated_outcomes <- as.integer(stats::runif(length(final_prob)) < final_prob)
+  # If method is analytical, return the final_prob directly
+  if (method == "analytical") {
+    simulated_outcomes <- final_prob
+  } else {
+    # Simulate default based on the final probability (stochastic)
+    simulated_outcomes <- as.integer(stats::runif(length(final_prob)) < final_prob)
+  }
 
   res_df <- tibble::tibble(
     tmp_id = swap_ins[[policy$applicant_id_col]],
