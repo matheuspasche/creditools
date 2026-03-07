@@ -13,6 +13,8 @@ generate_sample_data(
   default_rate_dispersion = 0.4,
   min_conversion_rate = 0.4,
   max_conversion_rate = 0.8,
+  pd_multiplier = 1,
+  complex_demographics = TRUE,
   seed = NULL
 )
 }
@@ -37,6 +39,10 @@ a moderate amount of churn.}
 
 \item{max_conversion_rate}{The maximum conversion rate for the worst scores.}
 
+\item{pd_multiplier}{A factor to artificially inflate the PD for volumetric testing (default: 1.0).}
+
+\item{complex_demographics}{If TRUE, adds real-world columns like \code{age}, \code{id_valid}, \code{bureau_derogatory}, and \code{vintage}.}
+
 \item{seed}{A random seed for reproducibility.}
 }
 \value{
@@ -45,9 +51,20 @@ historical policy outcomes, and the true default status.
 }
 \description{
 Creates a large, realistic dataset for simulating credit policy changes.
-This function generates two scores (\code{score_antigo} and \code{score_novo}) with a
+This function generates two scores (\code{old_score} and \code{new_score}) with a
 controllable correlation structure and realistic rank migration (i.e., churn
-in risk deciles).
+in risk deciles), mirroring the structure used in the
+\emph{Used Vehicles} case study vignette.
+
+When \code{complex_demographics = TRUE}, additional columns emulate a real
+underwriting funnel:
+\itemize{
+\item \code{id_valid}: proxy for CPF/document validation (≈ 0.5\% inválidos)
+\item \code{age}: applicant age with a small left tail below 19 anos (≈ 0.3\%)
+\item \code{bureau_derogatory}: negative registry amount in a credit bureau, with
+≈ 10\% of the population above a high-risk threshold (R$300+)
+\item \code{vintage}: monthly cohort (safra) across a fixed analysis window
+}
 
 The generation process is based on a latent variable model:
 \enumerate{
@@ -56,6 +73,13 @@ The generation process is based on a latent variable model:
 \item The \code{defaulted} outcome is a probabilistic function of the true risk \code{z}.
 This ensures that the scores are predictive and the default rates are logical.
 }
+
+Use \code{base_default_rate} to anchor the portfolio-level default rate,
+\code{default_rate_dispersion} to control separation between good and bad risk
+(higher values create more extreme tails), and \code{pd_multiplier} to inflate
+the PD globally when you need extra bads in peripheral deciles for
+volumetric stress testing. In combination, these levers reproduce the
+high-intensity tails used in the \emph{Used Vehicles} case study.
 }
 \examples{
 # Generate a sample with high correlation and moderate churn
@@ -63,6 +87,7 @@ analytical_base <- generate_sample_data(
   n_applicants = 10000,
   correlation = 0.8,
   churn_rate = 1,
+  pd_multiplier = 2,
   seed = 42
 )
 \dontrun{

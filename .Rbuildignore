@@ -7,6 +7,7 @@
 ^analytical_base\.csv$
 ^tradeoff_plot\.png$
 ^README\.Rmd$
+^dev$
 ^figure$
 ^data-raw$
 ^_pkgdown\.yml$
@@ -15,3 +16,11 @@
 ^pkgdown$
 ^cran-comments\.md$
 ^CRAN-SUBMISSION$
+^README\.html$
+^test_out\.txt$
+^tests\.log$
+^update_issue\.R$
+^.*\.html$
+^.*\.csv$
+^.*\.png$
+^.*\.tar\.gz$

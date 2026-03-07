@@ -109,12 +109,14 @@ run_simulation <- function(data, policy, quiet = FALSE) {
 
 #' Generic function to simulate a single stage
 #' @keywords internal
+#' @export
 simulate_stage <- function(data, stage, policy) {
   UseMethod("simulate_stage", stage)
 }
 
 #' Simulate a cutoff-based stage
 #' @keywords internal
+#' @exportS3Method simulate_stage stage_cutoff
 simulate_stage.stage_cutoff <- function(data, stage, policy) {
   # Create a matrix of approval decisions for each score in this stage
   approval_matrix <- purrr::map_dfc(names(stage$cutoffs), function(score_col) {
@@ -128,6 +130,7 @@ simulate_stage.stage_cutoff <- function(data, stage, policy) {
 
 #' Simulate a rate-based stage (e.g., conversion)
 #' @keywords internal
+#' @exportS3Method simulate_stage stage_rate
 simulate_stage.stage_rate <- function(data, stage, policy) {
 
   # Default to an empty vector of results
@@ -181,6 +184,7 @@ simulate_stage.stage_rate <- function(data, stage, policy) {
 
 #' Simulate a hard-filter stage (Binary Rules)
 #' @keywords internal
+#' @exportS3Method simulate_stage stage_filter
 simulate_stage.stage_filter <- function(data, stage, policy) {
   # Evaluate the string condition against the subset of eligible data
   # using base R eval to allow things like "idade > 18 & status == 'Válido'"
@@ -243,14 +247,25 @@ validate_simulation_inputs <- function(data, policy) {
 #' Classify scenarios based on current and new approval decisions
 #' @keywords internal
 classify_scenarios <- function(data, policy, new_approval_col) {
-  data$scenario <- dplyr::case_when(
-    data[[policy$current_approval_col]] == 0 & data[[new_approval_col]] == 1 ~ "swap_in",
-    data[[policy$current_approval_col]] == 1 & data[[new_approval_col]] == 0 ~ "swap_out",
-    data[[policy$current_approval_col]] == 1 & data[[new_approval_col]] == 1 ~ "keep_in",
-    data[[policy$current_approval_col]] == 0 & data[[new_approval_col]] == 0 ~ "keep_out",
-    TRUE ~ NA_character_
-  )
+  # Pre-allocate result vector
+  n <- nrow(data)
+  res <- rep(NA_character_, n)
 
+  # Extract columns as vectors once to ensure consistency
+  old_app <- as.integer(data[[policy$current_approval_col]])
+  new_app <- as.integer(data[[new_approval_col]])
+
+  # Handle NAs
+  old_app[is.na(old_app)] <- 0
+  new_app[is.na(new_app)] <- 0
+
+  # Vectorized assignments
+  res[old_app == 0 & new_app == 1] <- "swap_in"
+  res[old_app == 1 & new_app == 0] <- "swap_out"
+  res[old_app == 1 & new_app == 1] <- "keep_in"
+  res[old_app == 0 & new_app == 0] <- "keep_out"
+
+  data$scenario <- res
   return(data)
 }
 
@@ -340,8 +355,20 @@ calc_prob_aggravation <- function(data, policy, scenario) {
   if (is.null(group_vars)) {
     # Global aggravation
     baseline_rate <- mean(keep_ins[[policy$actual_default_col]], na.rm = TRUE)
-    agg_rate <- baseline_rate * scenario$factor
-    return(rep(agg_rate, nrow(data[data$scenario == "swap_in" & !is.na(data$scenario), ])))
+    swap_ins <- data[data$scenario == "swap_in" & !is.na(data$scenario), ]
+
+    if (is.character(scenario$factor) && length(scenario$factor) == 1) {
+      if (!scenario$factor %in% names(swap_ins)) {
+        cli::cli_abort("Dynamic stress factor column '{scenario$factor}' not found in data.")
+      }
+      agg_factor <- swap_ins[[scenario$factor]]
+    } else {
+      agg_factor <- scenario$factor
+    }
+
+    agg_rate <- baseline_rate * agg_factor
+    if (length(agg_rate) == 1) agg_rate <- rep(agg_rate, nrow(swap_ins))
+    return(agg_rate)
   }
 
   # Grouped aggravation (No pipe to avoid linter warnings)
@@ -351,15 +378,29 @@ calc_prob_aggravation <- function(data, policy, scenario) {
     .groups = "drop"
   )
 
-  agg_factor <- scenario$factor
-
   swap_ins <- data[data$scenario == "swap_in" & !is.na(data$scenario), ]
+
+  if (is.character(scenario$factor) && length(scenario$factor) == 1) {
+    if (!scenario$factor %in% names(swap_ins)) {
+      cli::cli_abort("Dynamic stress factor column '{scenario$factor}' not found in data.")
+    }
+    agg_factor <- swap_ins[[scenario$factor]]
+  } else {
+    agg_factor <- scenario$factor
+  }
+
   swap_ins <- dplyr::left_join(swap_ins, baseline_rates, by = group_vars)
   swap_ins$agg_rate <- swap_ins$baseline_rate * agg_factor
 
   if (anyNA(swap_ins$agg_rate)) {
     global_baseline <- mean(keep_ins[[policy$actual_default_col]], na.rm = TRUE)
-    swap_ins$agg_rate[is.na(swap_ins$agg_rate)] <- global_baseline * scenario$factor
+    na_idx <- is.na(swap_ins$agg_rate)
+
+    if (length(agg_factor) == 1) {
+      swap_ins$agg_rate[na_idx] <- global_baseline * agg_factor
+    } else {
+      swap_ins$agg_rate[na_idx] <- global_baseline * agg_factor[na_idx]
+    }
     cli::cli_alert_warning("Some swap-in groups had no baseline for default aggravation and used the global average.")
   }
 

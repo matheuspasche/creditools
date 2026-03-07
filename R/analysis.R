@@ -72,14 +72,6 @@ summarize_results <- function(results, by = NULL) {
   return(summary)
 }
 
-# This function is no longer needed as the logic is simplified
-# and doesn't depend on iterating through score-specific columns.
-#' @keywords internal
-get_final_approval_col <- function(simulation_stages, score_col) {
-  .Deprecated(msg = "'get_final_approval_col' is deprecated and no longer used.")
-  return(NULL)
-}
-
 
 #' Run a flexible trade-off analysis simulation
 #'

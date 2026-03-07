@@ -14,6 +14,10 @@ knitr::opts_chunk$set(
   message = FALSE, warning = FALSE
 )
 library(kableExtra)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(creditools)
 ```
 
 # The Business Problem
@@ -28,7 +32,7 @@ tibble::tribble(
   "3. Negative Registry", "Debt > R$300 → Rejected", "10%",
   "4. Credit Score Cutoff", "Score-based approval curve", "Variable",
   "5. Anti-Fraud", "98% pass rate", "2%",
-  "6. Credit Desk / LTV", "Tiered by risk: 10%-70% pass", "Variable"
+  "6. Human Analysis / LTV", "Tiered by risk: 10%-70% pass", "Variable"
 ) %>%
   kbl(align = "llc") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
@@ -45,42 +49,27 @@ The new score shows **wider PD amplitude in the positive tail** (better good-cli
 # Step 1: Generate Base & Run All Three Policies
 
 ```{r generate-and-simulate}
-library(creditools)
 library(dplyr)
 library(ggplot2)
 library(tidyr)
 
-set.seed(2024)
-n <- 5000000L
-
-# --- Latent risk factor ---
-z <- rnorm(n)
-e1 <- rnorm(n); e2 <- rnorm(n)
-current_score <- round(pnorm(0.84*z + 0.54*e1) * 700 + 300)
-latent_new <- 0.84*z + 0.54*e2
-latent_new <- ifelse(latent_new > 0, latent_new * 1.15, latent_new)
-new_score <- round(pnorm(latent_new) * 700 + 300)
-
-# --- Hard filter vars ---
-cpf_valid <- sample(c(TRUE,FALSE), n, replace=TRUE, prob=c(0.995,0.005))
-age <- sample(18:70, n, replace=TRUE)
-age[sample(n, round(n*0.003))] <- sample(17:18, round(n*0.003), replace=TRUE)
-neg_reg <- rexp(n, 1/100)
-neg_reg[sample(n, round(n*0.10))] <- runif(round(n*0.10), 301, 5000)
-
-vintage <- sample(seq.Date(as.Date("2023-01-01"), by="month", length.out=15), n, replace=TRUE)
-base_pd <- plogis(-3.8 + (-1.5)*z)
-defaulted <- as.integer(runif(n) < base_pd)
-
-decile <- ntile(current_score, 10)
-appr_prob <- c(0.05,0.08,0.12,0.17,0.22,0.28,0.35,0.42,0.50,0.60)
-approved <- as.integer(runif(n) < appr_prob[decile])
-
-base_data <- data.frame(
-  id=1:n, current_score, new_score, cpf_valid, age,
-  neg_registry=round(neg_reg,2), vintage, defaulted, approved,
-  risk_decile=decile
+# Use the improved data generator to create a representative sample
+# We use 100,000 rows for the check-friendly version of this vignette
+base_data <- generate_sample_data(
+  n_applicants = 100000L, 
+  complex_demographics = TRUE, 
+  seed = 2024
 )
+
+# Rename columns to match existing vignette logic if needed
+base_data <- base_data %>%
+  rename(
+    current_score = old_score,
+    cpf_valid = id_valid,
+    neg_registry = bureau_derogatory
+  ) %>%
+  mutate(risk_decile = ntile(current_score, 10))
+
 
 # --- Shared funnel components ---
 hf <- list(
@@ -98,7 +87,7 @@ make_policy <- function(score_col, cutoff=450, apply_stress=FALSE) {
     simulation_stages=c(hf, list(
       stage_cutoff(name="credit", cutoffs=setNames(list(cutoff), score_col)),
       fraud,
-      stage_rate(name="desk", base_rate=0.40,
+      stage_rate(name="human_analysis", base_rate=0.40,
                  stress_by_score=list(score_col=score_col, rate_at_min=0.10, rate_at_max=0.70))
     ))
   )
@@ -312,9 +301,7 @@ monthly_wide <- monthly %>%
 
 monthly_wide %>%
   kbl(caption = "Monthly Portfolio: Current vs New Score — Volume, PD, and Intervention Size") %>%
-  kable_styling(bootstrap_options = c("striped","hover","condensed"), full_width = FALSE, font_size = 11) %>%
-  column_spec(4, bold = TRUE, color = ifelse(monthly_wide$`Δ Approved` > 0, "#1565C0", "#C62828")) %>%
-  column_spec(7, bold = TRUE, color = ifelse(monthly_wide$`Δ PD (pp)` > 0, "#C62828", "#1B5E20"))
+  kable_styling(bootstrap_options = c("striped","hover","condensed"), full_width = FALSE, font_size = 11)
 ```
 
 ---
@@ -330,21 +317,21 @@ app_B <- sim_B$data %>% filter(new_approval == TRUE)
 rg_A <- find_risk_groups(
   data = app_A, score_cols = "current_score",
   default_col = "defaulted", time_col = "vintage",
-  bins = 15, min_vol_ratio = 0.05, max_volatility_cv = 0.15,
+  bins = 15, min_vol_ratio = 0.05, max_crossings = 1L,
   oot_date = as.Date("2024-01-01"), max_groups = 7
 )
 
 rg_B <- find_risk_groups(
   data = app_B, score_cols = "new_score",
   default_col = "defaulted", time_col = "vintage",
-  bins = 15, min_vol_ratio = 0.05, max_volatility_cv = 0.15,
+  bins = 15, min_vol_ratio = 0.05, max_crossings = 1L,
   oot_date = as.Date("2024-01-01"), max_groups = 7
 )
 
 rg_M <- find_risk_groups(
   data = app_A, score_cols = c("current_score", "new_score"),
   default_col = "defaulted", time_col = "vintage",
-  bins = 8, min_vol_ratio = 0.05, max_volatility_cv = 0.15,
+  bins = 8, min_vol_ratio = 0.05, max_crossings = 1L,
   oot_date = as.Date("2024-01-01"), max_groups = 7
 )
 
@@ -421,12 +408,11 @@ ggplot(stab_all, aes(x = month, y = pd, color = factor(risk_rating), group = fac
 
 ```{r export}
 export <- sim_B$data %>%
-  select(id, current_score, new_score, age, neg_registry, vintage,
-         approved, defaulted, scenario, 
-         approved_credit_decision_new, approved_anti_fraud_new, approved_conversion_new,
-         new_approval, simulated_default) %>%
-  left_join(rg_B$data %>% select(id, risk_rating_new_score = risk_rating), by = "id") %>%
-  left_join(rg_M$data %>% select(id, risk_rating_matrix = risk_rating), by = "id")
+  select(any_of(c("id", "current_score", "new_score", "age", "neg_registry", "vintage",
+         "approved", "defaulted", "scenario", "new_approval", "simulated_default",
+         "risk_rating_new_score", "risk_rating_matrix")),
+         starts_with("approved_")) %>%
+  { if("id" %in% names(.)) . else mutate(., id = row_number()) }
 
 readr::write_csv(export, file.path(getwd(), "case_study_base_export.csv"))
 cat("Exported:", format(nrow(export), big.mark=","), "rows, with final risk groups and funnel stage flags, to case_study_base_export.csv\n")

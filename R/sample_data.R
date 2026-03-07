@@ -2,15 +2,31 @@
 #'
 #' @description
 #' Creates a large, realistic dataset for simulating credit policy changes.
-#' This function generates two scores (`score_antigo` and `score_novo`) with a
+#' This function generates two scores (`old_score` and `new_score`) with a
 #' controllable correlation structure and realistic rank migration (i.e., churn
-#' in risk deciles).
+#' in risk deciles), mirroring the structure used in the
+#' *Used Vehicles* case study vignette.
+#'
+#' When `complex_demographics = TRUE`, additional columns emulate a real
+#' underwriting funnel:
+#' - `id_valid`: proxy for CPF/document validation (≈ 0.5% inválidos)
+#' - `age`: applicant age with a small left tail below 19 anos (≈ 0.3%)
+#' - `bureau_derogatory`: negative registry amount in a credit bureau, with
+#'   ≈ 10% of the population above a high-risk threshold (R$300+)
+#' - `vintage`: monthly cohort (safra) across a fixed analysis window
 #'
 #' The generation process is based on a latent variable model:
 #' 1. A "true risk" latent variable `z` is generated.
 #' 2. Each score is a combination of this true risk and an idiosyncratic noise component.
 #' 3. The `defaulted` outcome is a probabilistic function of the true risk `z`.
 #' This ensures that the scores are predictive and the default rates are logical.
+#'
+#' Use `base_default_rate` to anchor the portfolio-level default rate,
+#' `default_rate_dispersion` to control separation between good and bad risk
+#' (higher values create more extreme tails), and `pd_multiplier` to inflate
+#' the PD globally when you need extra bads in peripheral deciles for
+#' volumetric stress testing. In combination, these levers reproduce the
+#' high-intensity tails used in the *Used Vehicles* case study.
 #'
 #' @param n_applicants Number of applicants to generate.
 #' @param correlation The desired correlation between the old and new scores.
@@ -24,6 +40,8 @@
 #' @param default_rate_dispersion Controls the separation between good and bad risk.
 #' @param min_conversion_rate The minimum conversion rate for the best scores.
 #' @param max_conversion_rate The maximum conversion rate for the worst scores.
+#' @param pd_multiplier A factor to artificially inflate the PD for volumetric testing (default: 1.0).
+#' @param complex_demographics If TRUE, adds real-world columns like `age`, `id_valid`, `bureau_derogatory`, and `vintage`.
 #' @param seed A random seed for reproducibility.
 #'
 #' @return A tibble with the generated sample data, including IDs, scores,
@@ -36,6 +54,7 @@
 #'   n_applicants = 10000,
 #'   correlation = 0.8,
 #'   churn_rate = 1,
+#'   pd_multiplier = 2,
 #'   seed = 42
 #' )
 #' \dontrun{
@@ -44,7 +63,7 @@
 #'   dplyr::ntile(analytical_base$old_score, 10),
 #'   dplyr::ntile(analytical_base$new_score, 10)
 #' )
-#'}
+#' }
 generate_sample_data <- function(n_applicants = 20000,
                                  correlation = 0.7,
                                  churn_rate = 1.0,
@@ -53,6 +72,8 @@ generate_sample_data <- function(n_applicants = 20000,
                                  default_rate_dispersion = 0.4,
                                  min_conversion_rate = 0.4,
                                  max_conversion_rate = 0.8,
+                                 pd_multiplier = 1.0,
+                                 complex_demographics = TRUE,
                                  seed = NULL) {
   if (!is.null(seed)) {
     set.seed(seed)
@@ -91,22 +112,41 @@ generate_sample_data <- function(n_applicants = 20000,
   z_coef <- default_rate_dispersion
   # The sign is negative because a higher z (better score) must lead to a lower probability of default.
   pd <- 1 / (1 + exp(-(intercept - z_coef * z)))
+  pd <- pmin(pd * pd_multiplier, 1)
 
-  # 4. Create the final dataset
+  # 4. Generate complex demographic variables if requested
+  if (complex_demographics) {
+    id_valid <- sample(c(TRUE, FALSE), n_applicants, replace = TRUE, prob = c(0.995, 0.005))
+    age <- sample(18:70, n_applicants, replace = TRUE)
+    age[sample(n_applicants, round(n_applicants * 0.003))] <- sample(17:18, round(n_applicants * 0.003), replace = TRUE)
+    bureau_dero <- stats::rexp(n_applicants, 1 / 100)
+    bureau_dero[sample(n_applicants, round(n_applicants * 0.10))] <- stats::runif(round(n_applicants * 0.10), 301, 5000)
+    vintage <- sample(seq.Date(as.Date("2023-01-01"), by = "month", length.out = 15), n_applicants, replace = TRUE)
+  } else {
+    id_valid <- rep(TRUE, n_applicants)
+    age <- rep(30L, n_applicants)
+    bureau_dero <- rep(0, n_applicants)
+    vintage <- rep(as.Date("2023-01-01"), n_applicants)
+  }
+
+  # 5. Create the final dataset
   analytical_base <- tibble::tibble(
     id = 1:n_applicants,
     # --- Scores ---
-    # We use pnorm to convert the unbounded normal latent scores to a [0, 1] scale,
-    # then scale to 0-1000. This creates a more realistic, non-linear distribution.
     old_score = round(stats::pnorm(latent_score_1) * 1000),
     new_score = round(stats::pnorm(latent_score_2) * 1000),
 
     # --- True Outcome ---
-    # Simulate who actually defaults based on their probability of default
-    defaulted = as.integer(stats::runif(n_applicants) < pd)
+    defaulted = as.integer(stats::runif(n_applicants) < pd),
+
+    # --- Demographics ---
+    id_valid = id_valid,
+    age = age,
+    bureau_derogatory = round(bureau_dero, 2),
+    vintage = vintage
   )
 
-  # 5. Simulate historical policy outcomes
+  # 6. Simulate historical policy outcomes
   # Historical approval was based on `old_score`
   cutoff_approval <- stats::quantile(analytical_base$old_score, 1 - base_approval_rate)
   analytical_base$approved <- as.integer(analytical_base$old_score >= cutoff_approval)
@@ -114,7 +154,7 @@ generate_sample_data <- function(n_applicants = 20000,
   # Historical hiring was conditional on approval, with a monotonic conversion rate
   analytical_base$hired <- 0L
   approved_idx <- which(analytical_base$approved == 1)
-  
+
   if (length(approved_idx) > 0) {
     approved_scores <- analytical_base$old_score[approved_idx]
     min_score <- min(approved_scores, na.rm = TRUE)
