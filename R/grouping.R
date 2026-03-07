@@ -31,7 +31,7 @@
 find_risk_groups <- function(data,
                              score_cols,
                              default_col,
-                             time_col,
+                             time_col = NULL,
                              min_vol_ratio = 0.05,
                              max_crossings = 1L,
                              bins = 20,
@@ -44,13 +44,15 @@ find_risk_groups <- function(data,
         cli::cli_abort("Missing columns in data: {.field {missing_cols}}")
     }
 
-    # Strict Date Evaluation
-    if (!inherits(data[[time_col]], c("Date", "POSIXt"))) {
-        cli::cli_abort("Column {.arg {time_col}} must be a Date or POSIXt object. Please format your data before matrixing.")
+    # Strict Date Evaluation (only if time_col provided)
+    if (!is.null(time_col)) {
+        if (!inherits(data[[time_col]], c("Date", "POSIXt"))) {
+            cli::cli_abort("Column {.arg {time_col}} must be a Date or POSIXt object. Please format your data before matrixing.")
+        }
     }
 
     # 1. Spilt Train & OOT
-    if (!is.null(oot_date)) {
+    if (!is.null(oot_date) && !is.null(time_col)) {
         if (!inherits(oot_date, c("Date", "POSIXt"))) {
             cli::cli_abort("{.arg oot_date} must be a Date or POSIXt object.")
         }
@@ -98,14 +100,18 @@ find_risk_groups <- function(data,
         dplyr::select(micro_rating, empirical_pd, combo_vol) %>%
         dplyr::mutate(group_id = micro_rating)
 
-    # Pre-calculate monthly PDs for stability checks
-    monthly_stats <- train_data %>%
-        dplyr::group_by(micro_rating, !!rlang::sym(time_col)) %>%
-        dplyr::summarize(
-            bads = sum(!!rlang::sym(default_col), na.rm = TRUE),
-            vols = dplyr::n(),
-            .groups = "drop"
-        )
+    # Pre-calculate monthly PDs for stability checks (only if time_col provided)
+    if (!is.null(time_col)) {
+        monthly_stats <- train_data %>%
+            dplyr::group_by(micro_rating, !!rlang::sym(time_col)) %>%
+            dplyr::summarize(
+                bads = sum(!!rlang::sym(default_col), na.rm = TRUE),
+                vols = dplyr::n(),
+                .groups = "drop"
+            )
+    } else {
+        monthly_stats <- NULL
+    }
 
     # --- AGGLOMERATIVE CLUSTERING OPTIMIZATION LOOP ---
     converged <- FALSE
@@ -127,14 +133,18 @@ find_risk_groups <- function(data,
         n_groups <- nrow(group_summary)
         if (n_groups <= 1) break
 
-        current_monthly <- monthly_stats %>%
-            dplyr::inner_join(current_groups %>% dplyr::select(micro_rating, group_id), by = "micro_rating") %>%
-            dplyr::group_by(group_id, !!rlang::sym(time_col)) %>%
-            dplyr::summarize(
-                pd = sum(.data$bads) / sum(.data$vols),
-                .groups = "drop"
-            ) %>%
-            tidyr::pivot_wider(names_from = group_id, values_from = pd)
+        if (!is.null(monthly_stats)) {
+            current_monthly <- monthly_stats %>%
+                dplyr::inner_join(current_groups %>% dplyr::select(.data$micro_rating, .data$group_id), by = "micro_rating") %>%
+                dplyr::group_by(.data$group_id, !!rlang::sym(time_col)) %>%
+                dplyr::summarize(
+                    pd = sum(.data$bads) / sum(.data$vols),
+                    .groups = "drop"
+                ) %>%
+                tidyr::pivot_wider(names_from = .data$group_id, values_from = .data$pd)
+        } else {
+            current_monthly <- NULL
+        }
 
         g_ids <- group_summary$group_id
 

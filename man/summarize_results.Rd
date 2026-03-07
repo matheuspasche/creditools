@@ -42,6 +42,7 @@ summarize_results(results, by = "new_score_decile")
 }
 \seealso{
 Other analysis: 
+\code{\link{compare_policies}()},
 \code{\link{run_tradeoff_analysis}()}
 }
 \concept{analysis}

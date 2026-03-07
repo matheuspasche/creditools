@@ -28,6 +28,8 @@
 #' @param actual_default_col Name of the column with the true default flag for hired customers.
 #' @param new_score_cutoff The threshold for the challenger score to approve an applicant.
 #' @param aggravation_factor The +X% stress applied to Swap-Ins (defaults to 1.30 for 30% penalty).
+#' @param method The simulation method: `"stochastic"` (default) for row-by-row sampling
+#'   or `"analytical"` for expected value calculation (reweighting).
 #' @param time_col Optional. Name of the vintage/date column to ensure temporal stability in Risk Groups.
 #'
 #' @return A list containing the resulting metrics, the generated risk groups, and the appended dataset.
@@ -42,8 +44,10 @@ simulate_from_data <- function(data,
                                actual_default_col = "defaulted",
                                new_score_cutoff,
                                aggravation_factor = 1.30,
+                               method = c("stochastic", "analytical"),
                                time_col = NULL) {
-    cli::cli_h1("Creditools: Analytical Simulation from Flat Data")
+    method <- match.arg(method)
+    cli::cli_h1("Creditools: {ifelse(method == 'analytical', 'Analytical', 'Stochastic')} Simulation from Flat Data")
 
     # Ensure target columns exist
     req_cols <- c(applicant_id_col, current_score_col, new_score_col, historical_approval_col, historical_hired_col, actual_default_col)
@@ -88,12 +92,18 @@ simulate_from_data <- function(data,
     global_conversion <- mean(data[[historical_hired_col]][data[[historical_approval_col]] == 1], na.rm = TRUE)
     data$implied_conversion[is.na(data$implied_conversion)] <- global_conversion
 
-    data$new_hired <- data$new_approval * as.integer(stats::runif(nrow(data)) < data$implied_conversion)
+    if (method == "stochastic") {
+        data$new_hired <- data$new_approval * as.integer(stats::runif(nrow(data)) < data$implied_conversion)
+    } else {
+        # Analytical mode: Expected conversion
+        data$new_hired <- data$new_approval * data$implied_conversion
+    }
 
     cli::cli_alert_info("3. Computing Ward Risk Clustering on Challenger Population...")
 
     # Create the target subset for clustering
-    approved_data <- data %>% dplyr::filter(.data$new_approval == 1)
+    # In analytical mode, new_approval is a probability, so we take anyone with p > 0
+    approved_data <- data %>% dplyr::filter(.data$new_approval > 0)
 
     rg <- find_risk_groups(
         data = approved_data,
@@ -112,23 +122,53 @@ simulate_from_data <- function(data,
     cli::cli_alert_info("4. Applying {aggravation_factor}x Stress Aggravation by Risk Rating to Swap-Ins...")
 
     # Calculate Baseline Default by Risk Rating (Keep-Ins only)
-    baselines <- data %>%
-        dplyr::filter(.data$scenario == "keep_in", .data$new_hired == 1) %>%
-        dplyr::group_by(.data$risk_rating) %>%
-        dplyr::summarise(pd_baseline = mean(!!rlang::sym(actual_default_col), na.rm = TRUE), .groups = "drop")
+    if (method == "stochastic") {
+        baselines <- data %>%
+            dplyr::filter(.data$scenario == "keep_in", .data$new_hired == 1) %>%
+            dplyr::group_by(.data$risk_rating) %>%
+            dplyr::summarise(pd_baseline = mean(!!rlang::sym(actual_default_col), na.rm = TRUE), .groups = "drop")
+    } else {
+        # Analytical: Weighted mean (defaults weighted by hire probability)
+        # Note: actual_default_col is 0/1 for keep_ins
+        baselines <- data %>%
+            dplyr::filter(.data$scenario == "keep_in", .data$new_hired > 0) %>%
+            dplyr::group_by(.data$risk_rating) %>%
+            dplyr::summarise(
+                pd_baseline = sum(!!rlang::sym(actual_default_col) * .data$new_hired, na.rm = TRUE) / sum(.data$new_hired, na.rm = TRUE),
+                .groups = "drop"
+            )
+    }
 
     data <- data %>% dplyr::left_join(baselines, by = "risk_rating")
 
-    # Apply empirical defaults to Keep-Ins, Stressed prediction to Swap-Ins
-    data$simulated_default <- dplyr::case_when(
-        data$scenario == "keep_in" ~ (data[[actual_default_col]]),
-        data$scenario == "swap_in" ~ as.integer(stats::runif(nrow(data)) < (data$pd_baseline * aggravation_factor)),
-        TRUE ~ NA_integer_
-    )
+    # Fallback for risk ratings with no keep-ins: Global average
+    keep_ins_mask <- data$scenario == "keep_in" & !is.na(data$scenario)
+    global_pd_baseline <- if (method == "stochastic") {
+        mean(data[[actual_default_col]][keep_ins_mask & data$new_hired == 1], na.rm = TRUE)
+    } else {
+        sum(as.numeric(data[[actual_default_col]][keep_ins_mask]) * data$new_hired[keep_ins_mask], na.rm = TRUE) /
+            sum(data$new_hired[keep_ins_mask], na.rm = TRUE)
+    }
+    data$pd_baseline[is.na(data$pd_baseline) & !is.na(data$risk_rating)] <- global_pd_baseline
 
-    # Cleanup intermediate columns
+    # Apply empirical defaults to Keep-Ins, Stressed prediction to Swap-Ins
+    if (method == "stochastic") {
+        data$simulated_default <- dplyr::case_when(
+            data$scenario == "keep_in" ~ (as.numeric(data[[actual_default_col]])),
+            data$scenario == "swap_in" ~ as.numeric(stats::runif(nrow(data)) < (data$pd_baseline * aggravation_factor)),
+            TRUE ~ NA_real_
+        )
+    } else {
+        # Analytical mode: Expected PD (Production-weighted)
+        data$simulated_default <- dplyr::case_when(
+            data$scenario == "keep_in" ~ (as.numeric(data[[actual_default_col]]) * data$new_hired),
+            data$scenario == "swap_in" ~ (data$pd_baseline * aggravation_factor * data$new_hired),
+            TRUE ~ NA_real_
+        )
+    }
+
+    # Cleanup intermediate columns (Delayed until end)
     data$score_tier <- NULL
-    data$pd_baseline <- NULL
 
     # Summary View
     vol_summary <- data %>%
@@ -137,7 +177,17 @@ simulate_from_data <- function(data,
             Applicants = dplyr::n(),
             Approved = sum(.data$new_approval, na.rm = TRUE),
             Hired = sum(.data$new_hired, na.rm = TRUE),
-            Bad_Rate = mean(.data$simulated_default[.data$new_hired == 1], na.rm = TRUE),
+            Bad_Rate = if (method == "analytical") {
+                # Sum of expected bads / Sum of expected hired (where outcome is known)
+                denom <- sum(.data$new_hired[!is.na(.data$simulated_default)], na.rm = TRUE)
+                if (denom > 0) {
+                    sum(.data$simulated_default, na.rm = TRUE) / denom
+                } else {
+                    0
+                }
+            } else {
+                mean(.data$simulated_default[.data$new_hired == 1], na.rm = TRUE)
+            },
             .groups = "drop"
         )
 

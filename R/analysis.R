@@ -41,6 +41,24 @@ summarize_results <- function(results, by = NULL) {
 
   data <- results$data
   policy <- results$metadata$policy
+  # A robust check for analytical: does new_approval contain fractions?
+  # In run_simulation, analytical results are always numeric [0,1]
+  # We check if it's numeric and has any values that are NOT exactly 0 or 1.
+  # Also check if it's explicitly numeric.
+  is_analytical <- is.numeric(data$new_approval) &&
+    (any(data$new_approval > 0 & data$new_approval < 1, na.rm = TRUE) ||
+      any(data$simulated_default > 0 & data$simulated_default < 1, na.rm = TRUE))
+
+  # If it's a baseline run with no rate stages, it might be all 0/1 but still numeric.
+  # We check the method used in the metadata if available.
+  if (is.numeric(data$new_approval) && !is_analytical) {
+    if (!is.null(results$metadata$method) && results$metadata$method == "analytical") {
+      is_analytical <- TRUE
+    } else {
+      # Fallback: if it's numeric and we are in a context that likely is analytical
+      is_analytical <- TRUE
+    }
+  }
 
   # Validate 'by' columns if provided
   if (!is.null(by)) {
@@ -53,21 +71,36 @@ summarize_results <- function(results, by = NULL) {
   # Always group by scenario, and add any other requested columns
   grouping_vars <- c(by, "scenario")
 
-  summary <- data %>%
-    dplyr::group_by(dplyr::across(dplyr::all_of(grouping_vars))) %>%
-    dplyr::summarise(
-      volume = dplyr::n(),
-      total_approved = sum(.data$new_approval, na.rm = TRUE),
-      # Note: Default rate is calculated only on the approved population
-      avg_default_rate_approved = mean(.data$simulated_default[.data$new_approval == TRUE], na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    dplyr::mutate(
-      overall_approval_rate = .data$total_approved / .data$volume
-    )
+  if (!is_analytical) {
+    summary <- data %>%
+      dplyr::group_by(dplyr::across(dplyr::all_of(grouping_vars))) %>%
+      dplyr::summarise(
+        Applicants = dplyr::n(),
+        Approved = sum(.data$new_approval, na.rm = TRUE),
+        Hired = sum(.data$new_approval, na.rm = TRUE), # In Stochastic, Approved=Hired if no conversion stage
+        # Note: Default rate is calculated only on the approved population
+        Bad_Rate = mean(.data$simulated_default[.data$new_approval == 1], na.rm = TRUE),
+        .groups = "drop"
+      )
+  } else {
+    # Weighted summary for Analytical mode
+    summary <- data %>%
+      dplyr::group_by(dplyr::across(dplyr::all_of(grouping_vars))) %>%
+      dplyr::summarise(
+        Applicants = dplyr::n(),
+        Approved = sum(.data$new_approval, na.rm = TRUE),
+        Hired = sum(.data$new_approval, na.rm = TRUE),
+        Bad_Rate = ifelse(sum(.data$new_approval, na.rm = TRUE) > 0,
+          sum(.data$simulated_default * .data$new_approval, na.rm = TRUE) /
+            sum(.data$new_approval, na.rm = TRUE),
+          0
+        ),
+        .groups = "drop"
+      )
+  }
 
   # For groups where total_approved is 0, default rate is NaN. Replace with 0.
-  summary$avg_default_rate_approved[is.nan(summary$avg_default_rate_approved)] <- 0
+  summary$Bad_Rate[is.nan(summary$Bad_Rate)] <- 0
 
   return(summary)
 }
@@ -276,4 +309,78 @@ run_tradeoff_analysis <- function(data,
   if (!quiet) cli::cli_alert_success("All simulations complete.")
 
   return(simulation_outputs)
+}
+#' Compare two credit policies
+#'
+#' @description
+#' High-level business comparison between two policy simulations.
+#' Calculates delta production, delta bad debt, and swap analytics.
+#'
+#' @param sim_new A `credit_sim_results` object for the challenger policy.
+#' @param sim_old A `credit_sim_results` object for the baseline policy.
+#'
+#' @return A list containing:
+#'   - `metrics`: A tibble with global deltas (Approval Rate, Bad Rate).
+#'   - `swaps`: A tibble with volume/bad rates for swap_in, swap_out, and keep_in.
+#'   - `ratio`: The Swap-In to Keep-In volume ratio.
+#'
+#' @importFrom dplyr summarise n mutate filter
+#' @family analysis
+#' @export
+compare_policies <- function(sim_new, sim_old) {
+  if (!inherits(sim_new, "credit_sim_results") || !inherits(sim_old, "credit_sim_results")) {
+    cli::cli_abort("Both {.arg sim_new} and {.arg sim_old} must be {.cls credit_sim_results} objects.")
+  }
+
+  data_new <- sim_new$data
+  data_old <- sim_old$data
+
+  # Determine if analytical
+  is_analytical <- inherits(data_new$new_approval, "numeric")
+
+  # 1. Global Metrics
+  if (!is_analytical) {
+    # Stochastic
+    app_new <- sum(data_new$new_approval, na.rm = TRUE)
+    bad_new <- mean(data_new$simulated_default[data_new$new_approval == 1], na.rm = TRUE)
+
+    app_old <- sum(data_old$new_approval, na.rm = TRUE)
+    bad_old <- mean(data_old$simulated_default[data_old$new_approval == 1], na.rm = TRUE)
+  } else {
+    # Analytical
+    app_new <- sum(data_new$new_approval, na.rm = TRUE)
+    bad_new <- sum(data_new$simulated_default * data_new$new_approval, na.rm = TRUE) / pmax(app_new, 1)
+
+    app_old <- sum(data_old$new_approval, na.rm = TRUE)
+    bad_old <- sum(data_old$simulated_default * data_old$new_approval, na.rm = TRUE) / pmax(app_old, 1)
+  }
+
+  n_total <- nrow(data_new)
+  metrics <- tibble::tibble(
+    Metric = c("Approval Rate", "Bad Rate"),
+    Old = c(app_old / n_total, bad_old),
+    New = c(app_new / n_total, bad_new),
+    Delta_Abs = c((app_new - app_old) / n_total, bad_new - bad_old),
+    Delta_Rel = c((app_new / pmax(app_old, 1)) - 1, (bad_new / pmax(bad_old, 0.0001)) - 1)
+  )
+
+  # 2. Swap Analysis
+  swaps <- summarize_results(sim_new)
+
+  # Calculate Swap-In to Keep-In Ratio
+  if ("scenario" %in% names(swaps)) {
+    vol_si <- swaps$Approved[swaps$scenario == "swap_in"]
+    vol_ki <- swaps$Approved[swaps$scenario == "keep_in"]
+    vol_si <- if (length(vol_si) > 0) vol_si else 0
+    vol_ki <- if (length(vol_ki) > 0) vol_ki else 0
+    si_ki_ratio <- if (vol_ki > 0) vol_si / vol_ki else NA_real_
+  } else {
+    si_ki_ratio <- NA_real_
+  }
+
+  return(list(
+    metrics = metrics,
+    swaps = swaps,
+    ratio = si_ki_ratio
+  ))
 }

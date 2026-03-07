@@ -4,7 +4,7 @@
 \alias{simulate_swap_in_defaults}
 \title{Simulate default outcomes for swap-in applicants}
 \usage{
-simulate_swap_in_defaults(data, policy)
+simulate_swap_in_defaults(data, policy, method = c("stochastic", "analytical"))
 }
 \description{
 Simulate default outcomes for swap-in applicants

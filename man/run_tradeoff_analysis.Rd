@@ -109,6 +109,7 @@ if (requireNamespace("ggplot2", quietly = TRUE) && requireNamespace("dplyr", qui
 }
 \seealso{
 Other analysis: 
+\code{\link{compare_policies}()},
 \code{\link{summarize_results}()}
 }
 \concept{analysis}
