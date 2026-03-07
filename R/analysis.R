@@ -41,6 +41,19 @@ summarize_results <- function(results, by = NULL) {
 
   data <- results$data
   policy <- results$metadata$policy
+  is_analytical <- any(as.numeric(data$new_approval) %% 1 != 0) || inherits(data$new_approval, "numeric")
+
+  # A more robust check for analytical: does new_approval contain fractions?
+  # In run_simulation, analytical results are always numeric [0,1]
+  if (is.numeric(data$new_approval) && !all(data$new_approval %in% c(0, 1))) {
+    is_analytical <- TRUE
+  } else if (is.numeric(data$new_approval)) {
+    # It could be all 1s and 0s but still analytical (e.g. no rate stages)
+    # We check if simulated_default is also numeric/probabilistic
+    is_analytical <- inherits(data$simulated_default, "numeric")
+  } else {
+    is_analytical <- FALSE
+  }
 
   # Validate 'by' columns if provided
   if (!is.null(by)) {
@@ -53,21 +66,36 @@ summarize_results <- function(results, by = NULL) {
   # Always group by scenario, and add any other requested columns
   grouping_vars <- c(by, "scenario")
 
-  summary <- data %>%
-    dplyr::group_by(dplyr::across(dplyr::all_of(grouping_vars))) %>%
-    dplyr::summarise(
-      volume = dplyr::n(),
-      total_approved = sum(.data$new_approval, na.rm = TRUE),
-      # Note: Default rate is calculated only on the approved population
-      avg_default_rate_approved = mean(.data$simulated_default[.data$new_approval == TRUE], na.rm = TRUE),
-      .groups = "drop"
-    ) %>%
-    dplyr::mutate(
-      overall_approval_rate = .data$total_approved / .data$volume
-    )
+  if (!is_analytical) {
+    summary <- data %>%
+      dplyr::group_by(dplyr::across(dplyr::all_of(grouping_vars))) %>%
+      dplyr::summarise(
+        Applicants = dplyr::n(),
+        Approved = sum(.data$new_approval, na.rm = TRUE),
+        Hired = sum(.data$new_approval, na.rm = TRUE), # In Stochastic, Approved=Hired if no conversion stage
+        # Note: Default rate is calculated only on the approved population
+        Bad_Rate = mean(.data$simulated_default[.data$new_approval == 1], na.rm = TRUE),
+        .groups = "drop"
+      )
+  } else {
+    # Weighted summary for Analytical mode
+    summary <- data %>%
+      dplyr::group_by(dplyr::across(dplyr::all_of(grouping_vars))) %>%
+      dplyr::summarise(
+        Applicants = dplyr::n(),
+        Approved = sum(.data$new_approval, na.rm = TRUE),
+        Hired = sum(.data$new_approval, na.rm = TRUE),
+        Bad_Rate = ifelse(sum(.data$new_approval, na.rm = TRUE) > 0,
+          sum(.data$simulated_default * .data$new_approval, na.rm = TRUE) /
+            sum(.data$new_approval, na.rm = TRUE),
+          0
+        ),
+        .groups = "drop"
+      )
+  }
 
   # For groups where total_approved is 0, default rate is NaN. Replace with 0.
-  summary$avg_default_rate_approved[is.nan(summary$avg_default_rate_approved)] <- 0
+  summary$Bad_Rate[is.nan(summary$Bad_Rate)] <- 0
 
   return(summary)
 }

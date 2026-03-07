@@ -181,6 +181,23 @@ plot.credit_risk_groups <- function(x, ...) {
 #'
 #' @return A `ggplot` object (invisibly), after drawing the plot.
 #' @export
+plot.credit_sim_results <- function(x, ...) {
+  # If it's a granular simulation result, we summarize it first
+  if (inherits(x, "credit_sim_results") || !is.null(x$data)) {
+    # Directly use the summarization logic within the plotting function
+    # to avoid the strict S3 class check of summarize_results which fails in README.Rmd
+    temp_summary <- summarize_results(x)
+    # Reuse the logic from the high-level plot but with this summary
+    x_obj <- list(summary = temp_summary)
+    class(x_obj) <- "creditools_simulation_from_data"
+    return(plot.creditools_simulation_from_data(x_obj, ...))
+  }
+
+  cli::cli_abort("{.arg x} must be a {.cls credit_sim_results} object.")
+}
+
+#' @rdname plot.credit_sim_results
+#' @export
 plot.creditools_simulation_from_data <- function(x, ...) {
   if (!inherits(x, "creditools_simulation_from_data")) {
     cli::cli_abort("{.arg x} must be a {.cls creditools_simulation_from_data} object.")

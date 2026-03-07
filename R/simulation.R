@@ -80,17 +80,18 @@ run_simulation <- function(data, policy, method = c("stochastic", "analytical"),
       }
     } else {
       # Analytical mode: accumulate probabilities
-      # We don't filter rows, we calculate p(pass) for all rows
-      # For optimization, we only calculate for rows where p(pass) > 0
       if (i == 1) {
         data$pass_prob_funnel <- 1.0
       }
 
       # Probability of passing THIS stage
+      # Store the INDIVIDUAL stage result in the column
       data[[stage_output_col]] <- simulate_stage(data, stage, policy, method = "analytical")
 
-      # Probability of passing THE FUNNEL so far
+      # The column should represent the probability of PASSING THE FUNNEL UP TO THIS STAGE
+      # This matches the stochastic behavior where approved_X_new = 1 only if all previous were 1
       data$pass_prob_funnel <- data$pass_prob_funnel * data[[stage_output_col]]
+      data[[stage_output_col]] <- data$pass_prob_funnel
     }
   }
 
@@ -148,7 +149,13 @@ simulate_stage.stage_cutoff <- function(data, stage, policy, method = c("stochas
   })
 
   # Applicant passes if they meet ALL cutoffs in the stage
-  as.integer(apply(approval_matrix, 1, all))
+  res <- as.integer(apply(approval_matrix, 1, all))
+
+  if (method == "analytical") {
+    return(as.numeric(res))
+  }
+
+  return(res)
 }
 
 #' Simulate a rate-based stage (e.g., conversion)
@@ -164,20 +171,43 @@ simulate_stage.stage_rate <- function(data, stage, policy, method = c("stochasti
   if (!is.null(stage$observed_outcome_col)) {
     # A "keep-in" for this stage is someone who was approved in the original policy
     # AND had a positive outcome observed for this specific stage.
+    # CRITICAL: They must also be eligible based on the NEW funnel so far!
     is_original_approved <- data[[policy$current_approval_col]] == 1
     has_observed_outcome <- data[[stage$observed_outcome_col]] == 1
 
-    keep_in_idx <- which(is_original_approved & has_observed_outcome)
+    # Eligibility for the NEW funnel so far
+    if (method == "stochastic") {
+      # In stochastic, eligibility is handled by the caller (Reduce &)
+      # But we need to check if the caller passed us a subset with NA or 0
+      # Wait, the caller filters 'data' before calling this.
+      # So everyone passed to this function in stochastic mode is eligible.
+      keep_in_idx <- which(is_original_approved & has_observed_outcome)
+    } else {
+      # In analytical mode, everyone is passed, so we check pass_prob_funnel > 0
+      # Actually, new_approval here is cumulative_prob_so_far
+      # We only treat as "keep-in" if they were historically approved AND pass the new funnel (p=1)
+      # If p < 1, they are partly swap-ins. To keep it simple, we treat anyone
+      # with p < 1 as a swap-in for the "new" portion.
+      keep_in_idx <- which(is_original_approved & has_observed_outcome & data$pass_prob_funnel == 1)
+    }
 
     if (length(keep_in_idx) > 0) {
       stage_outcome[keep_in_idx] <- 1
     }
 
     # "Swap-ins" for this stage are everyone else who is eligible
-    swap_in_idx <- which(!(is_original_approved & has_observed_outcome))
+    if (method == "stochastic") {
+      swap_in_idx <- which(!(is_original_approved & has_observed_outcome))
+    } else {
+      swap_in_idx <- which(data$pass_prob_funnel > 0 & !(seq_len(nrow(data)) %in% keep_in_idx))
+    }
   } else {
     # If no observed data, everyone is a "swap-in" for this stage
-    swap_in_idx <- seq_len(nrow(data))
+    if (method == "stochastic") {
+      swap_in_idx <- seq_len(nrow(data))
+    } else {
+      swap_in_idx <- which(data$pass_prob_funnel > 0)
+    }
   }
 
   if (length(swap_in_idx) == 0) {
@@ -239,7 +269,11 @@ simulate_stage.stage_filter <- function(data, stage, policy, method = c("stochas
       eval_result[is.na(eval_result)] <- FALSE
 
       # Return as integer (1 = Passed, 0 = Rejected)
-      return(as.integer(eval_result))
+      res <- as.integer(eval_result)
+      if (method == "analytical") {
+        return(as.numeric(res))
+      }
+      return(res)
     },
     error = function(e) {
       cli::cli_abort(
@@ -457,7 +491,7 @@ calc_prob_monotonic <- function(data, score_col, params) {
   score_values <- data[[score_col]]
 
   interp_fun <- stats::approxfun(
-    x = range(score_values, na.rm = TRUE),
+    x = c(0, 1000),
     y = c(params$rate_at_min, params$rate_at_max),
     rule = 2 # Use the closest value for points outside the range
   )
