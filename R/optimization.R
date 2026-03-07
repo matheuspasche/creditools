@@ -411,3 +411,58 @@ create_pareto_plot <- function(analysis_results) {
     ) +
     ggplot2::theme_minimal()
 }
+#' Find an equivalent policy based on a target metric
+#'
+#' @description
+#' Searches through multi-scenario results to find a policy that matches a
+#' specific target value for either approval rate or default rate. Useful for
+#' "iso-approval" or "iso-bad-rate" analyses.
+#'
+#' @param tradeoff_results Results from `find_optimal_cutoffs()` or `run_tradeoff_analysis()`.
+#' @param target_metric The metric to match: `"approval_rate"` or `"default_rate"`.
+#' @param target_value The numeric value to search for (e.g., 0.20 for 20% approval).
+#' @param tolerance The numeric tolerance for matching. Default is 0.01 (1%).
+#'
+#' @return A data frame containing the closest matching scenarios.
+#' @export
+find_equivalent_policy <- function(tradeoff_results,
+                                   target_metric = c("approval_rate", "default_rate"),
+                                   target_value,
+                                   tolerance = 0.01) {
+  target_metric <- match.arg(target_metric)
+
+  if (inherits(tradeoff_results, "credit_opt_results")) {
+    results <- attr(tradeoff_results, "evaluation_results")
+  } else if (inherits(tradeoff_results, "credit_tradeoff_analysis")) {
+    results <- tradeoff_results$overall_analysis
+  } else {
+    results <- tradeoff_results
+  }
+
+  col_name <- if (target_metric == "approval_rate") "overall_approval_rate" else "overall_default_rate"
+  if (!col_name %in% names(results)) {
+      # Try fallback names from run_tradeoff_analysis
+      col_name <- if (target_metric == "approval_rate") "approval_rate" else "default_rate"
+  }
+
+  if (!col_name %in% names(results)) {
+    cli::cli_abort("Target metric column not found in results.")
+  }
+
+  matches <- results %>%
+    dplyr::mutate(diff = abs(.data[[col_name]] - target_value)) %>%
+    dplyr::filter(.data$diff <= tolerance) %>%
+    dplyr::arrange(.data$diff)
+
+  if (nrow(matches) == 0) {
+    cli::cli_alert_warning("No exact matches found within tolerance. Returning the single closest scenario.")
+    return(
+      results %>%
+        dplyr::mutate(diff = abs(.data[[col_name]] - target_value)) %>%
+        dplyr::arrange(.data$diff) %>%
+        dplyr::slice(1)
+    )
+  }
+
+  return(matches)
+}

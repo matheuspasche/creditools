@@ -17,7 +17,8 @@ library(kableExtra)
 library(dplyr)
 library(ggplot2)
 library(tidyr)
-library(creditools)
+# Use local development version
+devtools::load_all("..")
 ```
 
 # The Business Problem
@@ -147,43 +148,84 @@ bind_rows(
 
 ---
 
-# Step 3: The Delta Table — The One That Matters
+# Step 3: Business Impact — The Delta View
 
-This is the table that summarizes everything. For each policy, we show **what enters, what leaves, and how default changes**.
+The primary goal of a policy change is either to **increase volume** (holding risk constant) or **decrease risk** (holding volume constant). We use `compare_policies()` to get a consolidated view of these deltas.
 
 ```{r delta-table, echo=FALSE}
-summarize_policy <- function(sim, label) {
-  d <- sim$data
-  total <- nrow(d)
-  app <- d[d$new_approval == TRUE & !is.na(d$new_approval), ]
-  swap_in <- d[d$scenario == "swap_in" & !is.na(d$scenario), ]
-  swap_out <- d[d$scenario == "swap_out" & !is.na(d$scenario), ]
-  keep_in <- d[d$scenario == "keep_in" & !is.na(d$scenario), ]
-  
-  tibble::tibble(
-    Policy = label,
-    `Approved` = paste0(format(nrow(app), big.mark=","), " (", round(nrow(app)/total*100,1), "%)"),
-    `Keep-In` = paste0(format(nrow(keep_in), big.mark=","), " (", round(nrow(keep_in)/nrow(app)*100,1), "%)"),
-    `Swap-In` = paste0(format(nrow(swap_in), big.mark=","), " (", round(nrow(swap_in)/nrow(app)*100,1), "%)"),
-    `Swap-Out` = paste0(format(nrow(swap_out), big.mark=","), " (", round(nrow(swap_out)/total*100,1), "%)"),
-    `Keep-In PD` = paste0(round(mean(keep_in$defaulted, na.rm=TRUE)*100, 2), "%"),
-    `Swap-In PD (obs.)` = paste0(round(mean(swap_in$defaulted, na.rm=TRUE)*100, 2), "%"),
-    `Portfolio PD (Final)` = paste0(round(mean(app$simulated_default, na.rm=TRUE)*100, 2), "%")
-  )
-}
+comparison <- compare_policies(sim_B, sim_A)
 
-delta_tbl <- bind_rows(
-  summarize_policy(sim_A, "A: Current Score"),
-  summarize_policy(sim_B, "B: New Score")
+# 1. Global Metrics Table
+comparison$metrics %>%
+  mutate(
+    Old = scales::percent(Old, accuracy = 0.01),
+    New = scales::percent(New, accuracy = 0.01),
+    Delta_Abs = scales::percent(Delta_Abs, accuracy = 0.01),
+    Delta_Rel = scales::percent(Delta_Rel, accuracy = 0.1)
+  ) %>%
+  kbl(caption = "Policy Delta: Production vs Bad Debt") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+  column_spec(4:5, bold = TRUE, color = ifelse(comparison$metrics$Delta_Abs < 0, "darkgreen", "darkred"))
+
+# 2. Swap Analysis Table
+comparison$swaps %>%
+  filter(scenario != "keep_out") %>%
+  mutate(
+    Approved = format(Approved, big.mark=","),
+    Bad_Rate = scales::percent(Bad_Rate, accuracy = 0.01)
+  ) %>%
+  kbl(caption = "Swap Analysis: Who are we gaining and losing?") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+  column_spec(5, bold = TRUE)
+
+cat("\n**Swap-In to Keep-In Ratio:** ", scales::percent(comparison$ratio, accuracy = 0.1), 
+    "\n*(Values > 20% indicate a high-intervention policy change)*")
+```
+
+---
+
+# Step 4: Trade-off Analysis — Iso-Metric Scenarios
+
+Often, the business wants to know: *"If we keep the same 20% approval rate, how much can we lower the bad rate with the new score?"* Or: *"If we keep the same 5% bad rate, how much more can we approve?"*
+
+```{r tradeoff-iso}
+# 1. Run a tradeoff grid for the new score
+tradeoff_grid <- find_optimal_cutoffs(
+  data = base_data, 
+  config = make_policy("new_score", apply_stress = TRUE),
+  cutoff_steps = 20,
+  method = "analytical"
 )
 
-delta_tbl %>%
-  kbl(caption = "Policy Impact Summary: Swap Dynamics & Default Rates") %>%
-  kable_styling(bootstrap_options = c("striped","hover","condensed"), full_width = FALSE) %>%
-  column_spec(1, bold = TRUE) %>%
-  column_spec(4, color = "#1565C0", bold = TRUE) %>%
-  column_spec(5, color = "#C62828", bold = TRUE) %>%
-  column_spec(8, bold = TRUE, color = "darkred")
+# 2. Find Iso-Approval Scenario (Matching sim_A approval rate)
+iso_approval <- find_equivalent_policy(
+  tradeoff_grid, 
+  target_metric = "approval_rate", 
+  target_value = comparison$metrics$Old[1]
+)
+
+# 3. Find Iso-Bad-Rate Scenario (Matching sim_A bad rate)
+iso_bad_rate <- find_equivalent_policy(
+  tradeoff_grid, 
+  target_metric = "default_rate", 
+  target_value = comparison$metrics$Old[2]
+)
+
+# Combine for comparison
+tibble::tibble(
+  Scenario = c("Baseline (Current)", "Iso-Approval (New Score)", "Iso-Bad-Rate (New Score)"),
+  Cutoff = c(450, iso_approval$new_score[1], iso_bad_rate$new_score[1]),
+  `Approval Rate` = c(comparison$metrics$Old[1], iso_approval$overall_approval_rate[1], iso_bad_rate$overall_approval_rate[1]),
+  `Bad Rate` = c(comparison$metrics$Old[2], iso_approval$overall_default_rate[1], iso_bad_rate$overall_default_rate[1])
+) %>%
+  mutate(
+    `Approval Rate` = scales::percent(`Approval Rate`, accuracy = 0.1),
+    `Bad Rate` = scales::percent(`Bad Rate`, accuracy = 0.01)
+  ) %>%
+  kbl(caption = "Strategic Choices: Iso-Approval vs Iso-Bad-Rate") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
+  row_spec(2, background = "#e3f2fd") %>%
+  row_spec(3, background = "#e8f5e9")
 ```
 
 **How to read this table:** For each policy, the swap-ins are clients we *gain* (the current policy rejected them but the new one approves), and swap-outs are clients we *lose* (currently approved but new policy rejects). The net effect on default depends on the PD profile of each group. The "Portfolio PD (Final)" column shows the resulting PD. For the New Score, this includes a 30% default aggravation premium on all swap-ins (conservative assumption), whereas the Current Score PD reflects unstressed historical continuity.

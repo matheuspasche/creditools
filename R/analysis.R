@@ -305,3 +305,72 @@ run_tradeoff_analysis <- function(data,
 
   return(simulation_outputs)
 }
+#' Compare two credit policies
+#'
+#' @description
+#' High-level business comparison between two policy simulations.
+#' Calculates delta production, delta bad debt, and swap analytics.
+#'
+#' @param sim_new A `credit_sim_results` object for the challenger policy.
+#' @param sim_old A `credit_sim_results` object for the baseline policy.
+#'
+#' @return A list containing:
+#'   - `metrics`: A tibble with global deltas (Approval Rate, Bad Rate).
+#'   - `swaps`: A tibble with volume/bad rates for swap_in, swap_out, and keep_in.
+#'   - `ratio`: The Swap-In to Keep-In volume ratio.
+#'
+#' @importFrom dplyr summarise n mutate filter
+#' @family analysis
+#' @export
+compare_policies <- function(sim_new, sim_old) {
+  if (!inherits(sim_new, "credit_sim_results") || !inherits(sim_old, "credit_sim_results")) {
+    cli::cli_abort("Both {.arg sim_new} and {.arg sim_old} must be {.cls credit_sim_results} objects.")
+  }
+
+  data_new <- sim_new$data
+  data_old <- sim_old$data
+
+  # Determine if analytical
+  is_analytical <- inherits(data_new$new_approval, "numeric")
+
+  # 1. Global Metrics
+  if (!is_analytical) {
+    # Stochastic
+    app_new <- sum(data_new$new_approval, na.rm = TRUE)
+    bad_new <- mean(data_new$simulated_default[data_new$new_approval == 1], na.rm = TRUE)
+
+    app_old <- sum(data_old$new_approval, na.rm = TRUE)
+    bad_old <- mean(data_old$simulated_default[data_old$new_approval == 1], na.rm = TRUE)
+  } else {
+    # Analytical
+    app_new <- sum(data_new$new_approval, na.rm = TRUE)
+    bad_new <- sum(data_new$simulated_default * data_new$new_approval, na.rm = TRUE) / pmax(app_new, 1)
+
+    app_old <- sum(data_old$new_approval, na.rm = TRUE)
+    bad_old <- sum(data_old$simulated_default * data_old$new_approval, na.rm = TRUE) / pmax(app_old, 1)
+  }
+
+  n_total <- nrow(data_new)
+  metrics <- tibble::tibble(
+    Metric = c("Approval Rate", "Bad Rate"),
+    Old = c(app_old / n_total, bad_old),
+    New = c(app_new / n_total, bad_new),
+    Delta_Abs = c((app_new - app_old) / n_total, bad_new - bad_old),
+    Delta_Rel = c((app_new / pmax(app_old, 1)) - 1, (bad_new / pmax(bad_old, 0.0001)) - 1)
+  )
+
+  # 2. Swap Analysis
+  # Note: Results already have 'scenario' column based on current_approval_col
+  swaps <- summarize_results(sim_new)
+
+  # Calculate Swap-In to Keep-In Ratio
+  vol_si <- swaps$Approved[swaps$scenario == "swap_in"] %||% 0
+  vol_ki <- swaps$Approved[swaps$scenario == "keep_in"] %||% 0
+  si_ki_ratio <- if (length(vol_ki) > 0 && vol_ki > 0) vol_si / vol_ki else NA_real_
+
+  return(list(
+    metrics = metrics,
+    swaps = swaps,
+    ratio = si_ki_ratio
+  ))
+}
