@@ -84,6 +84,23 @@ credit_policy <- function(applicant_id_col,
   return(policy)
 }
 
+#' Add a stage to a credit policy
+#'
+#' @param policy A `credit_policy` object.
+#' @param stage A simulation stage created with `stage_cutoff`, `stage_rate`, etc.
+#'
+#' @return An updated `credit_policy` object.
+#' @export
+add_stage <- function(policy, stage) {
+  if (!inherits(policy, "credit_policy")) {
+    cli::cli_abort("{.arg policy} must be a {.cls credit_policy} object.")
+  }
+
+  policy$simulation_stages <- c(policy$simulation_stages, list(stage))
+  validate_credit_policy(policy)
+  return(policy)
+}
+
 #' @rdname credit_policy
 #' @export
 stress_aggravation <- function(factor, by = NULL) {

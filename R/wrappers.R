@@ -179,7 +179,12 @@ simulate_from_data <- function(data,
             Hired = sum(.data$new_hired, na.rm = TRUE),
             Bad_Rate = if (method == "analytical") {
                 # Sum of expected bads / Sum of expected hired (where outcome is known)
-                sum(.data$simulated_default, na.rm = TRUE) / sum(.data$new_hired[!is.na(.data$simulated_default)], na.rm = TRUE)
+                denom <- sum(.data$new_hired[!is.na(.data$simulated_default)], na.rm = TRUE)
+                if (denom > 0) {
+                    sum(.data$simulated_default, na.rm = TRUE) / denom
+                } else {
+                    0
+                }
             } else {
                 mean(.data$simulated_default[.data$new_hired == 1], na.rm = TRUE)
             },
