@@ -38,6 +38,7 @@ reference:
   - title: "Simulation Engines"
     desc: "Run single or grid-sweep simulations."
     contents:
+      - simulate_from_data
       - run_simulation
       - run_tradeoff_analysis
       - summarize_results

@@ -15,7 +15,7 @@
 #'   created using `stage_cutoff()` or `stage_rate()`.
 #' @param stress_scenarios A list defining stress testing scenarios for swap-ins,
 #'   created with `stress_aggravation()` or `stress_monotonic_increase()`.
-#' @param factor For `stress_aggravation`, the multiplicative factor to apply to the baseline default rate.
+#' @param factor For `stress_aggravation`, the multiplicative factor to apply to the baseline default rate. Can be a numeric scalar, or a character string mapping to a column in the data containing custom applicant-level stress factors.
 #' @param by For `stress_aggravation`, the column name to group by for stratified aggravation. If NULL, aggravation is applied globally.
 #' @param rate_at_min For `stress_monotonic_increase`, the assumed default rate for the minimum score value.
 #' @param rate_at_max For `stress_monotonic_increase`, the assumed default rate for the maximum score value.

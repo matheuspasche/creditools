@@ -11,6 +11,8 @@ knitr::opts_chunk$set(
   fig.path = "man/figures/README-",
   out.width = "100%"
 )
+# Ensure we load the local development version
+devtools::load_all(".")
 ```
 
 # creditools
@@ -49,8 +51,51 @@ The package is built around three main ideas:
 1.  **`credit_policy()`**: A central object that holds all the configuration for a simulation: column mappings, the sequence of decision stages, and stress scenarios for default simulation.
 2.  **`stages`**: A policy is composed of sequential stages, such as `stage_cutoff()` (for score-based decisions) or `stage_rate()` (for probabilistic stages like fraud checks or conversion rates).
 3.  **`run_simulation()` / `run_tradeoff_analysis()`**: The simulation engines. `run_simulation()` executes a single, defined policy, while `run_tradeoff_analysis()` is a powerful wrapper that runs dozens or hundreds of simulations to explore the impact of varying parameters.
+4.  **`simulate_from_data()`**: The high-level "Data-to-Insights" wrapper. Perfect for analysts who already have a flat table with historical outcomes and just want to backtest a single cutoff with Ward-clustering and PD stress in one command.
 
-## A Complete Example
+## Quick Start: Data-to-Insights
+
+If you already have a historical dataset with scores and outcomes (Default, Approval, Hiring), you don't need to define complex stages. You can get a complete tradeoff and RBP matrix in one line:
+
+```{r quick-start, message=FALSE, warning=FALSE}
+devtools::load_all(".")
+
+# 1. Generate sample data with the new complex demographics (bureau_derogatory, id_valid)
+# and a 2x PD multiplier for better volume in tail stress tests
+data <- generate_sample_data(
+  n_applicants = 100000, 
+  pd_multiplier = 2.0, 
+  complex_demographics = TRUE,
+  seed = 42
+)
+
+# 2. Run high-level simulation
+# This automatically:
+# - Simulates a 600-point cutoff
+# - Finds optimal Ward Risk Groups
+# - Projects 1.3x PD stress on Swap-Ins
+results <- simulate_from_data(
+  data = data,
+  current_score_col = "old_score",
+  new_score_col = "new_score",
+  new_score_cutoff = 600,
+  aggravation_factor = 1.30,
+  time_col = "vintage"
+)
+
+# 3. View the Business Summary
+print(results$summary)
+
+# 4. Visual Insights:
+# - Scenario Composition (Bars)
+# - Risk Group Stability (Lines over Vintages)
+plot(results)             # Scenario bad rates
+plot(results$risk_groups) # Ward cluster stability
+```
+
+---
+
+## A Complete Example (Funnel-Based)
 
 Here is a walk-through of a complex, realistic simulation using a massive analytical base (> 1.5 Million applicants), multiple decision stages (Credit, Fraud, Conversion), parallel processing, and custom stress scenarios.
 
@@ -59,13 +104,13 @@ Here is a walk-through of a complex, realistic simulation using a massive analyt
 First, we'll generate 1,500,000 applicants mimicking a historical base where applicants have an "old_score" and a new challenger "new_score". We want to evaluate if the `new_score` mitigates default risk while retaining healthy approval and conversion metrics.
 
 ```{r example-setup, message=FALSE, warning=FALSE}
-library(creditools)
+devtools::load_all(".")
 library(dplyr)
 library(ggplot2)
 library(future)
 
-# Enable parallel processing to handle the > 1.5 Million applicant volume swiftly
-future::plan(multisession)
+# Sequential processing for README generation stability
+# future::plan(multisession) 
 
 # Generate a massive analytical base (1.5 Million applicants)
 sample_data <- generate_sample_data(n_applicants = 1500000, seed = 42)
@@ -159,13 +204,12 @@ vary_params <- list(
   aggravation_factor = c(1.2, 1.5, 1.7) # 20%, 50% and 70% PD Uplift
 )
 
-# Run the parallel analysis!
-# `run_tradeoff_analysis` intercepts names like `*_base_rate` to dynamically override Funnel Stages
+# Run the analysis!
 tradeoff_results <- creditools::run_tradeoff_analysis(
   data = sample_data,
   base_policy = base_policy,
   vary_params = vary_params,
-  parallel = TRUE, # Using future multisession
+  parallel = FALSE, 
   quiet = TRUE
 )
 
@@ -233,7 +277,7 @@ rbp_matrix_results <- creditools::find_risk_groups(
     time_col = "vintage_month",
     bins = 10,                 # Starts as a 10x10 matrix (100 pockets)
     min_vol_ratio = 0.05,      # Groups cannot be smaller than 5%
-    max_volatility_cv = 0.20,  # Tolerates maximum 20% of PD Volatility (CV) per Vintage compared to the Average
+    max_crossings = 1L,        # Tolerates maximum 1 month of PD inversion
     oot_date = as.Date("2023-11-01") # Preserves Nov/Dec for Out-Of-Time validation!
 )
 

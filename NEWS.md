@@ -1,3 +1,10 @@
+# creditools 0.4.0
+
+*   **Performance**: Optimized `run_simulation` logic to handle datasets with 5M+ rows efficiently.
+*   **UX**: New high-level wrapper `simulate_from_data()` for one-line analysis.
+*   **Analytics**: `stress_aggravation()` now supports dynamic factor columns.
+*   **Documentation**: Massive overhaul of README and Case Study vignette.
+
 # creditools 0.3.0
 
 ## New Algorithm: Ward Agglomerative Clustering in `find_risk_groups()`

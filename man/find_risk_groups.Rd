@@ -32,6 +32,8 @@ find_risk_groups(
 \item{bins}{An integer defining the granularity of the initial matrix grid before pruning. E.g., \code{bins = 20} slices each score into 20 tiles (every 5 percentiles).}
 
 \item{oot_date}{An optional cutoff Date/POSIXt object. Data where \code{time_col >= oot_date} will be preserved exclusively for Out-Of-Time (OOT) validation reporting.}
+
+\item{max_groups}{An optional integer specifying the maximum number of risk groups to return. If NULL, pruning is driven solely by volume and stability thresholds.}
 }
 \value{
 A list containing:

@@ -46,7 +46,7 @@ created using \code{stage_cutoff()} or \code{stage_rate()}.}
 \item{stress_scenarios}{A list defining stress testing scenarios for swap-ins,
 created with \code{stress_aggravation()} or \code{stress_monotonic_increase()}.}
 
-\item{factor}{For \code{stress_aggravation}, the multiplicative factor to apply to the baseline default rate.}
+\item{factor}{For \code{stress_aggravation}, the multiplicative factor to apply to the baseline default rate. Can be a numeric scalar, or a character string mapping to a column in the data containing custom applicant-level stress factors.}
 
 \item{by}{For \code{stress_aggravation}, the column name to group by for stratified aggravation. If NULL, aggravation is applied globally.}
 

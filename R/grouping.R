@@ -15,6 +15,7 @@
 #' @param max_crossings Maximum number of vintage periods where an adjacent lower-risk group can have a HIGHER observed PD than the next group (crossing). Uses absolute count, not proportion — so it is robust to small vintage windows (6-18 months). Default is `1`, meaning at most 1 month of inversion is tolerated before forcing a merge.
 #' @param bins An integer defining the granularity of the initial matrix grid before pruning. E.g., `bins = 20` slices each score into 20 tiles (every 5 percentiles).
 #' @param oot_date An optional cutoff Date/POSIXt object. Data where `time_col >= oot_date` will be preserved exclusively for Out-Of-Time (OOT) validation reporting.
+#' @param max_groups An optional integer specifying the maximum number of risk groups to return. If NULL, pruning is driven solely by volume and stability thresholds.
 #'
 #' @return A list containing:
 #'   - `$data`: The original data frame with a new column `final_risk_group` attached to each row.
@@ -130,7 +131,7 @@ find_risk_groups <- function(data,
             dplyr::inner_join(current_groups %>% dplyr::select(micro_rating, group_id), by = "micro_rating") %>%
             dplyr::group_by(group_id, !!rlang::sym(time_col)) %>%
             dplyr::summarize(
-                pd = sum(bads) / sum(vols),
+                pd = sum(.data$bads) / sum(.data$vols),
                 .groups = "drop"
             ) %>%
             tidyr::pivot_wider(names_from = group_id, values_from = pd)
@@ -262,11 +263,24 @@ find_risk_groups <- function(data,
         report <- dplyr::bind_rows(report, summarize_group(oot_data, "OOT (Validation)"))
     }
 
-    return(list(
+    res <- list(
         data = final_data,
         mapping = final_mapping,
-        report = report
-    ))
+        report = report,
+        metadata = list(
+            score_cols = score_cols,
+            default_col = default_col,
+            time_col = time_col,
+            min_vol_ratio = min_vol_ratio,
+            max_crossings = max_crossings,
+            bins = bins,
+            oot_date = oot_date,
+            max_groups = max_groups
+        )
+    )
+
+    class(res) <- c("credit_risk_groups", class(res))
+    return(res)
 }
 
 #' Pairwise Matrixing of Challengers vs Primary Score

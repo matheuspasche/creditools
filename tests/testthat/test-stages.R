@@ -35,11 +35,11 @@ test_that("stage_filter correctly parses and drops out invalid rows", {
     # ID 1 fails age_check
     # ID 2 fails status_check
     # ID 5 is NA for age, so fails age_check implicitly
-    expect_equal(sim_df$new_approval[sim_df$id == 1], FALSE)
-    expect_equal(sim_df$new_approval[sim_df$id == 2], FALSE)
-    expect_equal(sim_df$new_approval[sim_df$id == 3], TRUE)
-    expect_equal(sim_df$new_approval[sim_df$id == 4], TRUE)
-    expect_equal(sim_df$new_approval[sim_df$id == 5], FALSE)
+    expect_equal(sim_df$new_approval[sim_df$id == 1], 0)
+    expect_equal(sim_df$new_approval[sim_df$id == 2], 0)
+    expect_equal(sim_df$new_approval[sim_df$id == 3], 1)
+    expect_equal(sim_df$new_approval[sim_df$id == 4], 1)
+    expect_equal(sim_df$new_approval[sim_df$id == 5], 0)
 })
 
 test_that("stage_filter alerts correctly on malformed conditions", {
