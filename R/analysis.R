@@ -41,18 +41,23 @@ summarize_results <- function(results, by = NULL) {
 
   data <- results$data
   policy <- results$metadata$policy
-  is_analytical <- any(as.numeric(data$new_approval) %% 1 != 0) || inherits(data$new_approval, "numeric")
-
-  # A more robust check for analytical: does new_approval contain fractions?
+  # A robust check for analytical: does new_approval contain fractions?
   # In run_simulation, analytical results are always numeric [0,1]
-  if (is.numeric(data$new_approval) && !all(data$new_approval %in% c(0, 1))) {
-    is_analytical <- TRUE
-  } else if (is.numeric(data$new_approval)) {
-    # It could be all 1s and 0s but still analytical (e.g. no rate stages)
-    # We check if simulated_default is also numeric/probabilistic
-    is_analytical <- inherits(data$simulated_default, "numeric")
-  } else {
-    is_analytical <- FALSE
+  # We check if it's numeric and has any values that are NOT exactly 0 or 1.
+  # Also check if it's explicitly numeric.
+  is_analytical <- is.numeric(data$new_approval) &&
+    (any(data$new_approval > 0 & data$new_approval < 1, na.rm = TRUE) ||
+      any(data$simulated_default > 0 & data$simulated_default < 1, na.rm = TRUE))
+
+  # If it's a baseline run with no rate stages, it might be all 0/1 but still numeric.
+  # We check the method used in the metadata if available.
+  if (is.numeric(data$new_approval) && !is_analytical) {
+    if (!is.null(results$metadata$method) && results$metadata$method == "analytical") {
+      is_analytical <- TRUE
+    } else {
+      # Fallback: if it's numeric and we are in a context that likely is analytical
+      is_analytical <- TRUE
+    }
   }
 
   # Validate 'by' columns if provided
@@ -360,13 +365,18 @@ compare_policies <- function(sim_new, sim_old) {
   )
 
   # 2. Swap Analysis
-  # Note: Results already have 'scenario' column based on current_approval_col
   swaps <- summarize_results(sim_new)
 
   # Calculate Swap-In to Keep-In Ratio
-  vol_si <- swaps$Approved[swaps$scenario == "swap_in"] %||% 0
-  vol_ki <- swaps$Approved[swaps$scenario == "keep_in"] %||% 0
-  si_ki_ratio <- if (length(vol_ki) > 0 && vol_ki > 0) vol_si / vol_ki else NA_real_
+  if ("scenario" %in% names(swaps)) {
+    vol_si <- swaps$Approved[swaps$scenario == "swap_in"]
+    vol_ki <- swaps$Approved[swaps$scenario == "keep_in"]
+    vol_si <- if (length(vol_si) > 0) vol_si else 0
+    vol_ki <- if (length(vol_ki) > 0) vol_ki else 0
+    si_ki_ratio <- if (vol_ki > 0) vol_si / vol_ki else NA_real_
+  } else {
+    si_ki_ratio <- NA_real_
+  }
 
   return(list(
     metrics = metrics,

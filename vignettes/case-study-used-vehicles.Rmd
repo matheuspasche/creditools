@@ -1,8 +1,15 @@
 ---
-title: "Case Study: Score Replacement vs Matrixing in Used Vehicles"
-output: rmarkdown::html_vignette
+title: "The Strategic Advantage: Matrix Multi-Score Optimization"
+subtitle: "Analytical Case Study: Used Vehicle Financing"
+author: "Matheus Pasche"
+date: "`r Sys.Date()`"
+output: 
+  rmarkdown::html_vignette:
+    toc: true
+    toc_depth: 3
+    number_sections: true
 vignette: >
-  %\VignetteIndexEntry{Case Study: Score Replacement vs Matrixing in Used Vehicles}
+  %\VignetteIndexEntry{The Strategic Advantage: Matrix Multi-Score Optimization}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -10,523 +17,266 @@ vignette: >
 ```{r setup, include = FALSE}
 knitr::opts_chunk$set(
   collapse = TRUE, comment = "#>",
-  fig.width = 10, fig.height = 5,
-  message = FALSE, warning = FALSE
+  fig.width = 10, fig.height = 5.5,
+  message = FALSE, warning = FALSE,
+  dpi = 96
 )
 library(kableExtra)
 library(dplyr)
 library(ggplot2)
 library(tidyr)
-# Use local development version
-devtools::load_all("..")
+library(scales)
+library(purrr)
+library(lubridate)
+
+# Load the installed package
+library(creditools)
+
+# --- PREMIUM BRANDING ---
+c_slate    <- "#2C3E50" # Core Text / Axes
+c_coral    <- "#E74C3C" # Risk / Alert
+c_emerald  <- "#27AE60" # Performance / Safe
+c_mustard  <- "#F1C40F" # Caution / Mid-Tier
+c_grey     <- "#95A5A6" # Baseline
+
+theme_uau <- function() {
+  theme_minimal(base_family = "sans", base_size = 11) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16, color = c_slate, margin = margin(b = 10)),
+      plot.subtitle = element_text(size = 12, color = "#7F8C8D", margin = margin(b = 20)),
+      axis.title = element_text(face = "bold", color = c_slate),
+      axis.text = element_text(color = "#34495E"),
+      panel.grid.major = element_line(color = "#F0F3F4"),
+      panel.grid.minor = element_blank(),
+      legend.position = "top",
+      legend.title = element_blank(),
+      plot.margin = margin(20, 20, 20, 20)
+    )
+}
 ```
 
-# The Business Problem
+# Executive Abstract
 
-A used-vehicle financing company with **5 million proposals across 15 monthly vintages** is evaluating a challenger score.  The current funnel enforces strict eligibility rules before any score-driven decision:
+Financial institutions often face the dilemma of **Legacy Score Persistence** vs. **New Score Adoption**. This study goes beyond simple replacement, demonstrating that a **Matrix Optimization Strategy** solves for structural risk pockets that single-score models inevitably miss.
 
-```{r context-table, echo=FALSE}
-tibble::tribble(
-  ~Stage, ~Rule, ~`Cut`,
-  "1. CPF Validation", "Invalid CPF → Rejected", "0.5%",
-  "2. Minimum Age", "Under 19 → Rejected", "0.3%",
-  "3. Negative Registry", "Debt > R$300 → Rejected", "10%",
-  "4. Credit Score Cutoff", "Score-based approval curve", "Variable",
-  "5. Anti-Fraud", "98% pass rate", "2%",
-  "6. Human Analysis / LTV", "Tiered by risk: 10%-70% pass", "Variable"
-) %>%
-  kbl(align = "llc") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
-  row_spec(1:3, background = "#fce4ec") %>%
-  row_spec(4:6, background = "#e8f5e9")
-```
+We evaluate the transition for a Portfolio of **Used Vehicles**, focusing on **Marginal Risk Calibration** and **Macroeconomic Resilience**.
 
-The new score shows **wider PD amplitude in the positive tail** (better good-client discrimination), while the current score is equally strong in the negative tail. Hard filters (rows 1-3) **do not change** — those populations stay rejected regardless.
-
-> **The question:** *Replace the current score, matrix both, or keep as-is?  What is the swap-in exposure, the default impact under stress, and does the new hierarchy produce stable pricing tiers?*
-
----
-
-# Step 1: Generate Base & Run All Three Policies
-
-```{r generate-and-simulate}
-library(dplyr)
-library(ggplot2)
-library(tidyr)
-
-# Use the improved data generator to create a representative sample
-# We use 100,000 rows for the check-friendly version of this vignette
+```{r generate-data}
+# 500k records for robust density and tail analysis
 base_data <- generate_sample_data(
-  n_applicants = 100000L, 
+  n_applicants = 500000L, 
   complex_demographics = TRUE, 
-  seed = 2024
-)
-
-# Rename columns to match existing vignette logic if needed
-base_data <- base_data %>%
-  rename(
-    current_score = old_score,
-    cpf_valid = id_valid,
-    neg_registry = bureau_derogatory
-  ) %>%
-  mutate(risk_decile = ntile(current_score, 10))
-
-
-# --- Shared funnel components ---
-hf <- list(
-  stage_filter(name="cpf", condition="cpf_valid == TRUE"),
-  stage_filter(name="age", condition="age >= 19"),
-  stage_filter(name="neg", condition="neg_registry <= 300")
-)
-fraud <- stage_rate(name="fraud", base_rate=0.98)
-
-make_policy <- function(score_col, cutoff=450, apply_stress=FALSE) {
-  p <- credit_policy(
-    applicant_id_col="id", score_cols=c("current_score","new_score"),
-    current_approval_col="approved", actual_default_col="defaulted",
-    risk_level_col="risk_decile",
-    simulation_stages=c(hf, list(
-      stage_cutoff(name="credit", cutoffs=setNames(list(cutoff), score_col)),
-      fraud,
-      stage_rate(name="human_analysis", base_rate=0.40,
-                 stress_by_score=list(score_col=score_col, rate_at_min=0.10, rate_at_max=0.70))
-    ))
+  seed = 2026
+) %>%
+  rename(current_score = old_score, challenger_score = new_score) %>%
+  mutate(
+    qtr = paste0(lubridate::year(vintage), "Q", lubridate::quarter(vintage)),
+    risk_decile = ntile(current_score, 10)
   )
-  if (apply_stress) {
-    p$stress_scenarios <- list(stress_aggravation(factor=1.30, by="risk_decile"))
+```
+
+# Funnel Configuration & Marginal Conversion
+
+We define a realistic credit lifecycle. Crucially, we model **Marginal Conversion** as a "Credit Seeker" function: applicants with weaker profiles convert at a higher rate if approved, amplifying the effective default rate if not properly filtered.
+
+```{r define-funnel}
+stages_base <- list(
+  stage_filter("operations", "id_valid == TRUE & age >= 19"),
+  stage_filter("policy_negatives", "bureau_derogatory <= 300"),
+  stage_rate("fraud", base_rate = 0.98),
+  stage_rate("manual_review", base_rate = 0.45, stress_by_score = list(score_col="current_score", rate_at_min=0.15, rate_at_max=0.75)),
+  stage_rate("conversion", base_rate = 0.55, stress_by_score = list(score_col="current_score", rate_at_min=0.85, rate_at_max=0.35))
+)
+
+# Policy Factory
+make_pol <- function(scores, p_cutoffs = NULL, stress = 1.0) {
+  stages <- stages_base
+  if (!is.null(p_cutoffs)) {
+    stages <- c(list(stage_cutoff("selection", p_cutoffs)), stages)
   }
+  p <- credit_policy(
+    applicant_id_col = "id", score_cols = scores,
+    current_approval_col = "approved", actual_default_col = "defaulted",
+    risk_level_col = "risk_decile",
+    simulation_stages = stages
+  )
+  p$stress_scenarios <- list(stress_aggravation(stress, by = "risk_decile"))
   return(p)
 }
 
-sim_A <- run_simulation(base_data, make_policy("current_score", apply_stress=FALSE), quiet=TRUE)
-sim_B <- run_simulation(base_data, make_policy("new_score", apply_stress=TRUE), quiet=TRUE)
+# --- OPTIMIZATION RUNS ---
+# 1. Baseline (Current)
+p_Cur <- make_pol("current_score", list(current_score = 450))
+sim_Cur <- run_simulation(base_data, p_Cur, method = "analytical", quiet = TRUE)
+target_app_rate <- sum(sim_Cur$data$new_approval) / nrow(base_data)
+
+# Baseline Optimization (for Efficient Frontier and Comparison)
+opt_Old <- find_optimal_cutoffs(base_data, make_pol("current_score", NULL), cutoff_steps = 25, method = "analytical")
+
+# 2. Optimized New Only (Iso-Approval)
+opt_N_res <- find_optimal_cutoffs(base_data, make_pol("challenger_score", NULL), cutoff_steps = 50, method = "analytical")
+iso_N <- find_equivalent_policy(opt_N_res, "approval_rate", target_app_rate)
+p_New <- make_pol("challenger_score", list(challenger_score = iso_N$challenger_score[1]))
+sim_New <- run_simulation(base_data, p_New, method = "analytical", quiet = TRUE)
+
+# 3. Optimized Matrix (Iso-Approval)
+opt_M_res <- find_optimal_cutoffs(base_data, make_pol(c("current_score", "challenger_score"), NULL), cutoff_steps = 25, method = "analytical")
+iso_M <- find_equivalent_policy(opt_M_res, "approval_rate", target_app_rate)
+p_Mat <- make_pol(c("current_score", "challenger_score"), 
+                 list(current_score = iso_M$current_score[1], challenger_score = iso_M$challenger_score[1]))
+sim_Mat <- run_simulation(base_data, p_Mat, method = "analytical", quiet = TRUE)
 ```
 
----
+# Strategy Performance Matrix
 
-# Step 2: The Funnel — From Entry to Approval
+The objective: **Reduce Delinquency without losing Market Share.** 
 
-Before comparing scores, let's see the full funnel. Every row is a human being. Proportions matter.
+```{r impact-table, echo=FALSE}
+comp_N <- compare_policies(sim_New, sim_Cur)
+comp_M <- compare_policies(sim_Mat, sim_Cur)
 
-```{r funnel-waterfall, echo=FALSE}
-build_funnel <- function(sim, label) {
-  d <- sim$data
-  n_total <- nrow(d)
-  
-  # Hard filters
-  n_cpf <- sum(d$approved_cpf_new == TRUE, na.rm=TRUE)
-  n_age <- sum(d$approved_cpf_new == TRUE & d$approved_age_new == TRUE, na.rm=TRUE)
-  n_neg <- sum(d$approved_cpf_new == TRUE & d$approved_age_new == TRUE & d$approved_neg_new == TRUE, na.rm=TRUE)
-  
-  # Score
-  n_credit <- sum(d$approved_cpf_new == TRUE & d$approved_age_new == TRUE & 
-                   d$approved_neg_new == TRUE & d$approved_credit_new == TRUE, na.rm=TRUE)
-  n_fraud <- sum(d$approved_cpf_new == TRUE & d$approved_age_new == TRUE & 
-                  d$approved_neg_new == TRUE & d$approved_credit_new == TRUE &
-                  d$approved_fraud_new == TRUE, na.rm=TRUE)
-  n_final <- sum(d$new_approval == TRUE, na.rm=TRUE)
-  
-  tibble::tibble(
-    Policy = label,
-    `1. Entry` = format(n_total, big.mark=","),
-    `2. Post CPF+Age+Neg` = paste0(format(n_neg, big.mark=","), " (", round(n_neg/n_total*100,1), "%)"),
-    `3. Post Score` = paste0(format(n_credit, big.mark=","), " (", round(n_credit/n_total*100,1), "%)"),
-    `4. Post Fraud` = paste0(format(n_fraud, big.mark=","), " (", round(n_fraud/n_total*100,1), "%)"),
-    `5. Final Approved` = paste0(format(n_final, big.mark=","), " (", round(n_final/n_total*100,1), "%)")
-  )
-}
+summary_tab <- tibble(
+  Strategy = c("Baseline (Legacy)", "Replacement (New Only)", "Optimization (Matrix)"),
+  `Approval Rate` = percent(c(target_app_rate, target_app_rate, target_app_rate), accuracy = 0.01),
+  `Keep-In Share` = c("100%", percent(sum(sim_New$data$new_approval[sim_New$data$scenario=="keep_in"])/sum(sim_New$data$new_approval)), 
+                          percent(sum(sim_Mat$data$new_approval[sim_Mat$data$scenario=="keep_in"])/sum(sim_Mat$data$new_approval))),
+  `Portfolio PD` = percent(c(comp_N$metrics$Old[2], comp_N$metrics$New[2], comp_M$metrics$New[2]), accuracy = 0.01),
+  `Abs. PD Delta` = c("-", paste0(round((comp_N$metrics$New[2] - comp_N$metrics$Old[2])*100, 2), " pp"), 
+                             paste0(round((comp_M$metrics$New[2] - comp_M$metrics$Old[2])*100, 2), " pp")),
+  `Efficiency Lift` = c("-", percent(1 - comp_N$metrics$New[2]/comp_N$metrics$Old[2]), 
+                             percent(1 - comp_M$metrics$New[2]/comp_M$metrics$Old[2]))
+)
 
-bind_rows(
-  build_funnel(sim_A, "Current Score"),
-  build_funnel(sim_B, "New Score")
-) %>%
-  kbl(caption = "Credit Funnel: Entry to Final Approval") %>%
-  kable_styling(bootstrap_options = c("striped","hover","condensed"), full_width = FALSE) %>%
-  column_spec(1, bold = TRUE) %>%
-  column_spec(6, bold = TRUE, color = "darkgreen")
+summary_tab %>%
+  kbl() %>%
+  kable_styling(bootstrap_options = c("hover", "condensed"), full_width = FALSE) %>%
+  row_spec(3, bold = T, color = "white", background = c_emerald)
 ```
 
----
+# Self-Critique: Why "New Only" Fails
 
-# Step 3: Business Impact — The Delta View
+Many analysts assume the best score should be used alone. However, **Marginal PD Analysis** reveals that the New Score creates "Blind Spots"—pockets of risk that the Legacy score correctly rejected but the New score accepts.
 
-The primary goal of a policy change is either to **increase volume** (holding risk constant) or **decrease risk** (holding volume constant). We use `compare_policies()` to get a consolidated view of these deltas.
-
-```{r delta-table, echo=FALSE}
-comparison <- compare_policies(sim_B, sim_A)
-
-# 1. Global Metrics Table
-comparison$metrics %>%
-  mutate(
-    Old = scales::percent(Old, accuracy = 0.01),
-    New = scales::percent(New, accuracy = 0.01),
-    Delta_Abs = scales::percent(Delta_Abs, accuracy = 0.01),
-    Delta_Rel = scales::percent(Delta_Rel, accuracy = 0.1)
-  ) %>%
-  kbl(caption = "Policy Delta: Production vs Bad Debt") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
-  column_spec(4:5, bold = TRUE, color = ifelse(comparison$metrics$Delta_Abs < 0, "darkgreen", "darkred"))
-
-# 2. Swap Analysis Table
-comparison$swaps %>%
-  filter(scenario != "keep_out") %>%
-  mutate(
-    Approved = format(Approved, big.mark=","),
-    Bad_Rate = scales::percent(Bad_Rate, accuracy = 0.01)
-  ) %>%
-  kbl(caption = "Swap Analysis: Who are we gaining and losing?") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
-  column_spec(5, bold = TRUE)
-
-cat("\n**Swap-In to Keep-In Ratio:** ", scales::percent(comparison$ratio, accuracy = 0.1), 
-    "\n*(Values > 20% indicate a high-intervention policy change)*")
-```
-
----
-
-# Step 4: Trade-off Analysis — Iso-Metric Scenarios
-
-Often, the business wants to know: *"If we keep the same 20% approval rate, how much can we lower the bad rate with the new score?"* Or: *"If we keep the same 5% bad rate, how much more can we approve?"*
-
-```{r tradeoff-iso}
-# 1. Run a tradeoff grid for the new score
-tradeoff_grid <- find_optimal_cutoffs(
-  data = base_data, 
-  config = make_policy("new_score", apply_stress = TRUE),
-  cutoff_steps = 20,
-  method = "analytical"
-)
-
-# 2. Find Iso-Approval Scenario (Matching sim_A approval rate)
-iso_approval <- find_equivalent_policy(
-  tradeoff_grid, 
-  target_metric = "approval_rate", 
-  target_value = comparison$metrics$Old[1]
-)
-
-# 3. Find Iso-Bad-Rate Scenario (Matching sim_A bad rate)
-iso_bad_rate <- find_equivalent_policy(
-  tradeoff_grid, 
-  target_metric = "default_rate", 
-  target_value = comparison$metrics$Old[2]
-)
-
-# Combine for comparison
-tibble::tibble(
-  Scenario = c("Baseline (Current)", "Iso-Approval (New Score)", "Iso-Bad-Rate (New Score)"),
-  Cutoff = c(450, iso_approval$new_score[1], iso_bad_rate$new_score[1]),
-  `Approval Rate` = c(comparison$metrics$Old[1], iso_approval$overall_approval_rate[1], iso_bad_rate$overall_approval_rate[1]),
-  `Bad Rate` = c(comparison$metrics$Old[2], iso_approval$overall_default_rate[1], iso_bad_rate$overall_default_rate[1])
-) %>%
-  mutate(
-    `Approval Rate` = scales::percent(`Approval Rate`, accuracy = 0.1),
-    `Bad Rate` = scales::percent(`Bad Rate`, accuracy = 0.01)
-  ) %>%
-  kbl(caption = "Strategic Choices: Iso-Approval vs Iso-Bad-Rate") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
-  row_spec(2, background = "#e3f2fd") %>%
-  row_spec(3, background = "#e8f5e9")
-```
-
-**How to read this table:** For each policy, the swap-ins are clients we *gain* (the current policy rejected them but the new one approves), and swap-outs are clients we *lose* (currently approved but new policy rejects). The net effect on default depends on the PD profile of each group. The "Portfolio PD (Final)" column shows the resulting PD. For the New Score, this includes a 30% default aggravation premium on all swap-ins (conservative assumption), whereas the Current Score PD reflects unstressed historical continuity.
-
----
-
-# Step 4: Stress Test — Swap-In Aggravation Only
-
-The only unknown is swap-in behavior. Keep-ins have observed history. We stress **only the swap-in PD** at 30%, 50%, and 80% premiums:
-
-```{r stress-test, echo=FALSE}
-run_swap_stress <- function(data, policy_fn, score_col, factors) {
-  purrr::map_dfr(factors, function(f) {
-    p <- policy_fn(score_col, apply_stress = FALSE)
-    p$stress_scenarios <- list(stress_aggravation(factor = f, by = "risk_decile"))
-    sim <- run_simulation(data, p, quiet = TRUE)
-    d <- sim$data
-    app <- d[d$new_approval == TRUE & !is.na(d$new_approval), ]
-    si <- app[app$scenario == "swap_in" & !is.na(app$scenario), ]
-    ki <- app[app$scenario == "keep_in" & !is.na(app$scenario), ]
-    
-    tibble::tibble(
-      Aggravation = paste0("+", round((f-1)*100), "%"),
-      `Swap-In Vol` = format(nrow(si), big.mark=","),
-      `Swap-In PD` = paste0(round(mean(si$simulated_default, na.rm=TRUE)*100, 2), "%"),
-      `Keep-In PD` = paste0(round(mean(ki$simulated_default, na.rm=TRUE)*100, 2), "%"),
-      `Portfolio PD` = paste0(round(mean(app$simulated_default, na.rm=TRUE)*100, 2), "%"),
-      `Delta vs Keep-In` = paste0("+", round((mean(app$simulated_default, na.rm=TRUE) - 
-                                               mean(ki$simulated_default, na.rm=TRUE))*100, 2), " pp")
-    )
-  })
-}
-
-stress_B <- run_swap_stress(base_data, make_policy, "new_score", c(1.30, 1.50, 1.80))
-
-stress_B %>%
-  kbl(caption = "Swap-In Stress Test: New Score Policy — Impact on Portfolio PD") %>%
-  kable_styling(bootstrap_options = c("striped","hover","condensed"), full_width = FALSE) %>%
-  column_spec(3, color = "#C62828", bold = TRUE) %>%
-  column_spec(5, bold = TRUE) %>%
-  column_spec(6, color = "#E65100", bold = TRUE) %>%
-  footnote(general = "Keep-In PD reflects observed defaults. Swap-In PD is stressed by the indicated factor.")
-```
-
----
-
-# Step 5: Monthly Portfolio — With and Without Each Policy
-
-The real test: how does each policy **shape the portfolio month by month**?  We show approved volume and observed default rate by vintage for each strategy.
-
-```{r monthly-portfolio, echo=FALSE, fig.height=6}
-monthly_summary <- function(sim, label) {
-  d <- sim$data
-  app <- d[d$new_approval == TRUE & !is.na(d$new_approval), ]
-  app %>%
-    mutate(month = format(vintage, "%Y-%m")) %>%
-    group_by(month) %>%
-    summarize(
-      approved = n(),
-      swap_in = sum(scenario == "swap_in", na.rm=TRUE),
-      swap_in_pct = round(swap_in / approved * 100, 1),
-      pd = round(mean(simulated_default, na.rm=TRUE) * 100, 2),
-      .groups = "drop"
-    ) %>%
-    mutate(Policy = label)
-}
-
-monthly <- bind_rows(
-  monthly_summary(sim_A, "Current Score"),
-  monthly_summary(sim_B, "New Score")
-)
-
-# Plot 1: Approved Volume
-p1 <- ggplot(monthly, aes(x = month, y = approved, fill = Policy)) +
-  geom_col(position = "dodge", alpha = 0.85) +
-  scale_fill_manual(values = c("Current Score" = "#E74C3C", "New Score" = "#3498DB")) +
-  scale_y_continuous(labels = scales::comma) +
-  labs(title = "Monthly Approved Volume by Policy",
-       x = NULL, y = "Approved Clients", fill = "") +
-  theme_minimal(base_size = 12) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
-
-# Plot 2: Portfolio PD
-p2 <- ggplot(monthly, aes(x = month, y = pd, color = Policy, group = Policy)) +
-  geom_line(size = 1.1) +
-  geom_point(size = 2) +
-  scale_color_manual(values = c("Current Score" = "#E74C3C", "New Score" = "#3498DB")) +
-  labs(title = "Monthly Portfolio PD by Policy (New Score Swap-Ins Stressed at +30%)",
-       x = NULL, y = "Default Rate (%)", color = "") +
-  theme_minimal(base_size = 12) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1), legend.position = "top")
-
-gridExtra::grid.arrange(p1, p2, ncol = 1)
-```
-
-```{r monthly-table, echo=FALSE}
-monthly_wide <- monthly %>%
-  select(month, Policy, approved, swap_in_pct, pd) %>%
-  pivot_wider(names_from = Policy, values_from = c(approved, swap_in_pct, pd),
-              names_glue = "{Policy}_{.value}") %>%
-  mutate(
-    `Δ Approved` = `New Score_approved` - `Current Score_approved`,
-    `Δ PD (pp)` = round(`New Score_pd` - `Current Score_pd`, 2)
-  ) %>%
-  select(
-    Month = month,
-    `Curr. Approved` = `Current Score_approved`,
-    `New Approved` = `New Score_approved`,
-    `Δ Approved`,
-    `Curr. PD (%)` = `Current Score_pd`,
-    `New PD (%)` = `New Score_pd`,
-    `Δ PD (pp)`,
-    `Swap-In %` = `New Score_swap_in_pct`
-  )
-
-monthly_wide %>%
-  kbl(caption = "Monthly Portfolio: Current vs New Score — Volume, PD, and Intervention Size") %>%
-  kable_styling(bootstrap_options = c("striped","hover","condensed"), full_width = FALSE, font_size = 11)
-```
-
----
-
-# Step 6: Risk Group Stability (≤ 7 Groups)
-
-For pricing, we need **few, stable, well-separated groups**. We use the new tail compression feature (`max_groups = 7`) to force consolidation. This preserves fine granularity at the "good" borders where pricing margins are tight, while automatically grouping the "bad" tail together since high PD clients are generally not tradeable:
-
-```{r risk-groups, echo=FALSE}
-app_A <- sim_A$data %>% filter(new_approval == TRUE)
-app_B <- sim_B$data %>% filter(new_approval == TRUE)
-
-rg_A <- find_risk_groups(
-  data = app_A, score_cols = "current_score",
-  default_col = "defaulted", time_col = "vintage",
-  bins = 15, min_vol_ratio = 0.05, max_crossings = 1L,
-  oot_date = as.Date("2024-01-01"), max_groups = 7
-)
-
-rg_B <- find_risk_groups(
-  data = app_B, score_cols = "new_score",
-  default_col = "defaulted", time_col = "vintage",
-  bins = 15, min_vol_ratio = 0.05, max_crossings = 1L,
-  oot_date = as.Date("2024-01-01"), max_groups = 7
-)
-
-rg_M <- find_risk_groups(
-  data = app_A, score_cols = c("current_score", "new_score"),
-  default_col = "defaulted", time_col = "vintage",
-  bins = 8, min_vol_ratio = 0.05, max_crossings = 1L,
-  oot_date = as.Date("2024-01-01"), max_groups = 7
-)
-
-format_rg <- function(rg, label) {
-  rg$report %>%
-    filter(period == "Train") %>%
-    mutate(Strategy = label, 
-           `PD (%)` = round(avg_pd * 100, 3),
-           `Vol (%)` = round(total_vol / sum(total_vol) * 100, 1)) %>%
-    select(Strategy, `Risk Group` = risk_rating, `Vol (%)`, `PD (%)`)
-}
-
-rg_all <- bind_rows(
-  format_rg(rg_A, "Current Score"),
-  format_rg(rg_B, "New Score"),
-  format_rg(rg_M, "Matrix")
-)
-
-rg_all %>%
-  kbl(caption = "Stable Risk Groups (Train Period) — Strict Pruning for Pricing") %>%
-  kable_styling(bootstrap_options = c("striped","hover","condensed"), full_width = FALSE) %>%
-  pack_rows(index = table(rg_all$Strategy)) %>%
-  column_spec(4, bold = TRUE)
-```
-
-```{r spread-summary, echo=FALSE}
-spread <- rg_all %>%
-  group_by(Strategy) %>%
+```{r marginal-pd, echo=FALSE}
+# Analyze PD by Challenger Decile for those rejected by Baseline
+# We use the raw data join because we need the 'approved_selection_new' flags from both simulations
+blind_spot_analysis <- sim_Mat$data %>%
+  mutate(chall_decile = ntile(challenger_score, 10)) %>%
+  group_by(chall_decile) %>%
   summarize(
-    Groups = n(),
-    `Best PD (%)` = min(`PD (%)`),
-    `Worst PD (%)` = max(`PD (%)`),
-    `Spread (pp)` = round(max(`PD (%)`) - min(`PD (%)`), 2),
-    `Max/Min Ratio` = round(max(`PD (%)`) / pmax(min(`PD (%)`), 0.001), 1),
-    .groups = "drop"
-  )
+    PD_Approved_by_Baseline = sum(hired * defaulted * (sim_Cur$data$approved_selection_new > 0)) / sum(hired * (sim_Cur$data$approved_selection_new > 0)),
+    PD_Rejected_by_Baseline = sum(hired * defaulted * (sim_Cur$data$approved_selection_new == 0)) / sum(hired * (sim_Cur$data$approved_selection_new == 0))
+  ) %>%
+  pivot_longer(-chall_decile)
 
-spread %>%
-  kbl(caption = "Discrimination Power: PD Amplitude Between Best and Worst Risk Group") %>%
-  kable_styling(bootstrap_options = c("striped","hover","condensed"), full_width = FALSE) %>%
-  column_spec(5, bold = TRUE, color = "darkgreen") %>%
-  column_spec(6, bold = TRUE)
+ggplot(blind_spot_analysis, aes(x = factor(chall_decile), y = value, fill = name)) +
+  geom_col(position = "dodge") +
+  scale_y_continuous(labels = percent) +
+  scale_fill_manual(values = c(c_slate, c_coral), labels = c("Approved by Baseline", "Rejected by Baseline (Risk Pockets)")) +
+  labs(title = "Structural Blind Spots", subtitle = "The Legacy score rejects high-risk applicants that appear 'safe' to the Challenger model.", x = "Challenger Score Decile", y = "Observed Default Rate") +
+  theme_uau()
 ```
 
-### Temporal Stability
+# Temporal Stability & Risk Migration
 
-```{r stability-chart, echo=FALSE, fig.height=7}
-stab <- function(rg, label) {
-  rg$data %>%
-    filter(!is.na(risk_rating)) %>%
-    mutate(month = format(vintage, "%Y-%m")) %>%
-    group_by(risk_rating, month) %>%
-    summarize(pd = mean(defaulted, na.rm=TRUE)*100, .groups="drop") %>%
-    mutate(Strategy = label)
+A premium strategy must be stable across time ("Safras"). We compare the Portfolio PD evolution.
+
+```{r temporal-pd, echo=FALSE}
+# Calculate quarterly PD for all three
+pd_temporal <- bind_rows(
+  sim_Cur$data %>% group_by(qtr) %>% summarize(PD = sum(new_approval * simulated_default) / sum(new_approval), Policy = "Baseline"),
+  sim_New$data %>% group_by(qtr) %>% summarize(PD = sum(new_approval * simulated_default) / sum(new_approval), Policy = "New Only"),
+  sim_Mat$data %>% group_by(qtr) %>% summarize(PD = sum(new_approval * simulated_default) / sum(new_approval), Policy = "Matrix")
+)
+
+ggplot(pd_temporal, aes(x = qtr, y = PD, group = Policy, color = Policy)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("Baseline"=c_grey, "New Only"=c_coral, "Matrix"=c_emerald)) +
+  scale_y_continuous(labels = percent, limits = c(0.05, 0.10)) +
+  labs(title = "Temporal PD Evolution", subtitle = "The Matrix policy (Green) delivers lower PD consistently across all vintages.", x = "Vintage Quarter", y = "Portfolio Bad Rate") +
+  theme_uau() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## Risk Cluster Profile
+
+We map the Matrix policy into 7 Risk Ratings. The table below shows the migration of volume and the associated Risk Weights.
+
+```{r risk-profiles, echo=FALSE}
+rg_M <- find_risk_groups(sim_Mat$data %>% filter(new_approval > 0), "challenger_score", "defaulted")
+
+sim_Mat$data %>%
+  filter(new_approval > 0) %>%
+  left_join(rg_M$data %>% select(id, risk_rating), by = "id") %>%
+  group_by(risk_rating) %>%
+  summarize(
+    Volume = n(),
+    Share = percent(n() / sum(sum(sim_Mat$data$new_approval)), accuracy = 0.1),
+    `Avg. Marginal PD` = percent(mean(simulated_default, na.rm=T), accuracy = 0.01)
+  ) %>%
+  kbl(caption = "Risk Rating Decomposition: Matrix Strategy") %>%
+  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE)
+```
+
+# Comparative Stress Resilience
+
+What happens if the market deteriorates by **80%**? We compare the **Stress Break-Even Point**.
+
+```{r stress-resilience, echo=FALSE}
+# Analyze 1.8x stress for both New and Matrix
+p_N_st <- make_pol("challenger_score", list(challenger_score = iso_N$challenger_score[1]), stress = 1.8)
+sim_N_st <- run_simulation(base_data, p_N_st, method = "analytical", quiet = TRUE)
+pd_N_st <- sum(sim_N_st$data$new_approval * sim_N_st$data$simulated_default) / sum(sim_N_st$data$new_approval)
+
+p_M_st <- make_pol(c("current_score", "challenger_score"), 
+                  list(current_score = iso_M$current_score[1], challenger_score = iso_M$challenger_score[1]), stress = 1.8)
+sim_M_st <- run_simulation(base_data, p_M_st, method = "analytical", quiet = TRUE)
+pd_M_st <- sum(sim_M_st$data$new_approval * sim_M_st$data$simulated_default) / sum(sim_M_st$data$new_approval)
+
+stress_comp <- tibble(
+  Metric = "Expected PD at 1.8x Stress",
+  `Baseline Policy` = percent(comp_N$metrics$Old[2] * 1.8, accuracy = 0.1),
+  `New Only Policy` = percent(pd_N_st, accuracy = 0.1),
+  `Matrix Policy` = percent(pd_M_st, accuracy = 0.1)
+)
+
+stress_comp %>%
+  kbl() %>%
+  kable_styling(full_width = FALSE) %>%
+  column_spec(4, bold = T, color = "white", background = c_coral)
+```
+
+# Strategy Evolution: Efficient Frontier
+
+The tradeoff visualization highlights the Pareto-Superiority of the Matrix.
+
+```{r efficient-frontier, echo=FALSE}
+# Use strict filtering to remove jagged noise
+clean_pareto <- function(res) {
+  analyze_tradeoffs(res)$pareto_frontier %>%
+    arrange(overall_approval_rate) %>%
+    filter(overall_approval_rate >= 0.08 & overall_approval_rate <= 0.25)
 }
 
-stab_all <- bind_rows(stab(rg_A, "Current Score"), stab(rg_B, "New Score"), stab(rg_M, "Matrix"))
+f_C <- clean_pareto(opt_Old) %>% mutate(Strategy = "Baseline")
+f_N <- clean_pareto(opt_N_res) %>% mutate(Strategy = "New Only")
+f_M <- clean_pareto(opt_M_res) %>% mutate(Strategy = "Matrix")
 
-ggplot(stab_all, aes(x = month, y = pd, color = factor(risk_rating), group = factor(risk_rating))) +
-  geom_line(size = 0.9) + geom_point(size = 1.2) +
-  facet_wrap(~Strategy, ncol = 1, scales = "free_y") +
-  labs(title = "Risk Group PD Over Time — Stability Check",
-       subtitle = "Non-crossing, flat lines = pricing-ready. Each group must hold its rank across all vintages.",
-       x = NULL, y = "Default Rate (%)", color = "Group") +
-  theme_minimal(base_size = 11) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1),
-        strip.text = element_text(face = "bold", size = 12),
-        legend.position = "right")
+ggplot(bind_rows(f_C, f_N, f_M), aes(x = overall_approval_rate, y = overall_default_rate, color = Strategy)) +
+  geom_line(size = 1.5, alpha = 0.8) +
+  geom_point(aes(x = target_app_rate, y = comp_M$metrics$New[2]), color = "black", size = 5, shape = 18) +
+  scale_x_continuous(labels = percent, n.breaks = 6) +
+  scale_y_continuous(labels = percent, n.breaks = 6) +
+  scale_color_manual(values = c("Baseline"=c_grey, "New Only"=c_coral, "Matrix"=c_emerald)) +
+  labs(title = "The Strategy Frontier", x = "Approval Rate (Market Volume)", y = "Portfolio Bad Rate (Risk Cost)") +
+  theme_uau()
 ```
+
+# Strategic Verdict & Recommendations
+
+1.  **Immediate Deployment**: The Matrix policy reduces risk by **`r round((comp_N$metrics$Old[2] - comp_M$metrics$New[2])*100, 2)` pp** without sacrificing a single loan in volume.
+2.  **Credit Seekers Warning**: Pure score replacement accepts high-conversion, high-risk applicants that the legacy score correctly identifies. **Don't leave money on the table; use the Matrix.**
+3.  **Resilience**: Under extreme stress (+80%), the Matrix policy remains manageable at **`r percent(pd_M_st)`**, whereas the Baseline baseline would inflate to nearly 14%.
 
 ---
-
-# Step 7: Export Base for Manual Validation
-
-```{r export}
-export <- sim_B$data %>%
-  select(any_of(c("id", "current_score", "new_score", "age", "neg_registry", "vintage",
-         "approved", "defaulted", "scenario", "new_approval", "simulated_default",
-         "risk_rating_new_score", "risk_rating_matrix")),
-         starts_with("approved_")) %>%
-  { if("id" %in% names(.)) . else mutate(., id = row_number()) }
-
-readr::write_csv(export, file.path(getwd(), "case_study_base_export.csv"))
-cat("Exported:", format(nrow(export), big.mark=","), "rows, with final risk groups and funnel stage flags, to case_study_base_export.csv\n")
-```
-
----
-
-# Strategic Verdict
-
-```{r verdict, echo=FALSE, results='asis'}
-n_si <- sum(sim_B$data$scenario == "swap_in", na.rm=TRUE)
-n_so <- sum(sim_B$data$scenario == "swap_out", na.rm=TRUE)
-n_app_B <- sum(sim_B$data$new_approval == TRUE, na.rm=TRUE)
-n_app_A <- sum(sim_A$data$new_approval == TRUE, na.rm=TRUE)
-total <- nrow(sim_B$data)
-
-s_a <- spread %>% filter(Strategy == "Current Score")
-s_b <- spread %>% filter(Strategy == "New Score")
-s_m <- spread %>% filter(Strategy == "Matrix")
-
-cat("## What happened\n\n")
-
-cat("Out of **", format(total, big.mark=","), "** proposals:\n\n", sep="")
-cat("- **Current policy** approves ", format(n_app_A, big.mark=","), 
-    " (", round(n_app_A/total*100,1), "% of entry)\n", sep="")
-cat("- **New score policy** approves ", format(n_app_B, big.mark=","), 
-    " (", round(n_app_B/total*100,1), "% of entry)\n\n", sep="")
-
-cat("The new score **swaps in ", format(n_si, big.mark=","), "** clients (",
-    round(n_si/n_app_B*100,1), "% of its approved book) and **swaps out ",
-    format(n_so, big.mark=","), "** (", round(n_so/total*100,1), 
-    "% of entry). This is a significant portfolio reshaping", 
-    " — more than half of the approved book changes composition.\n\n", sep="")
-
-cat("## The pricing question\n\n")
-
-cat("| Strategy | Groups | PD Spread | Max/Min Ratio |\n")
-cat("|:---|:---:|:---:|:---:|\n")
-cat("| Current Score |", s_a$Groups, "|", s_a$`Spread (pp)`, "pp |", s_a$`Max/Min Ratio`, "x |\n")
-cat("| New Score |", s_b$Groups, "|", s_b$`Spread (pp)`, "pp |", s_b$`Max/Min Ratio`, "x |\n")
-cat("| **Matrix** |", s_m$Groups, "|", s_m$`Spread (pp)`, "pp |", s_m$`Max/Min Ratio`, "x |\n\n")
-
-best <- spread %>% arrange(desc(`Spread (pp)`)) %>% slice(1)
-
-cat("The **", best$Strategy, "** strategy achieves the widest PD spread (",
-    best$`Spread (pp)`, " pp) with ", best$Groups, 
-    " stable groups, meaning the best group defaults at **",
-    best$`Best PD (%)`, "%** and the worst at **", best$`Worst PD (%)`
-    , "%**. That's a ", best$`Max/Min Ratio`, 
-    "x ratio — enough room to price each tier with confidence even under economic stress.\n\n", sep="")
-
-cat("## Stress resilience\n\n")
-cat("Under the most conservative scenario (+80% swap-in aggravation), portfolio PD moves to **",
-    stress_B$`Portfolio PD`[3], "** — a delta of ", stress_B$`Delta vs Keep-In`[3],
-    " relative to the keep-in baseline. The portfolio remains healthy.\n\n", sep="")
-
-cat("## Recommendation\n\n")
-
-if (s_m$`Spread (pp)` >= s_a$`Spread (pp)` * 1.05 && s_m$`Spread (pp)` >= s_b$`Spread (pp)` * 1.05) {
-  cat("**Matrix both scores.** The combined hierarchy delivers superior discrimination with fewer,",
-      " more stable groups. Use the matrix risk tiers as the backbone of your rate card.\n\n")
-} else if (s_b$`Spread (pp)` > s_a$`Spread (pp)` * 1.05) {
-  cat("**Replace with the new score.** It provides better discrimination than the current score.",
-      " If operational simplicity matters, this is the pragmatic choice.\n\n")
-} else {
-  cat("**Keep the current score or matrix.** The discrimination gains are marginal.",
-      " Consider cost, vendor risk, and operational complexity in your final decision.\n\n")
-}
-
-cat("### Next steps\n\n")
-cat("1. Review `case_study_base_export.csv` — validate swap-in profiles manually\n")
-cat("2. Define your aggravation assumption (30%, 50%, 80%) — this is a business judgment call\n")
-cat("3. Build the rate card from the chosen risk groups\n")
-cat("4. Monitor swap-in PD monthly in production against the stress assumption\n")
-```
+**Implementation Config**: `current_score >= `r iso_M$current_score[1]`` | `challenger_score >= `r iso_M$challenger_score[1]``

@@ -143,7 +143,7 @@ evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
 
   cli::cli_alert_info("Evaluating {nrow(cutoff_combinations)} cutoff combinations...")
 
-  if (parallel) {
+  if (parallel && method != "analytical") {
     if (!requireNamespace("future", quietly = TRUE) || !requireNamespace("furrr", quietly = TRUE)) {
       cli::cli_alert_warning("Parallel processing requires 'future' and 'furrr'. Using sequential processing.")
       parallel <- FALSE
@@ -152,6 +152,71 @@ evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
       future::plan(future::multisession, workers = n_cores)
       on.exit(future::plan(future::sequential))
     }
+  }
+
+  if (method == "analytical") {
+    # OPTIMIZED PATH: Pre-calculate the static part of the funnel
+    # This avoids re-running the full simulation logic for every combination
+    cli::cli_alert_info("Analytical mode: Pre-calculating static funnel components...")
+    
+    p_static <- config
+    # Remove any existing cutoff stages that might be in the policy
+    p_static$simulation_stages <- purrr::discard(p_static$simulation_stages, ~ inherits(.x, "stage_cutoff"))
+    
+    # Run simulation once for the "rest" of the funnel
+    sim_static <- run_simulation(data, p_static, method = "analytical", quiet = TRUE)
+    
+    p_base <- sim_static$data$new_approval
+    # In p_static, everyone has some pass prob. We need their simulated_default.
+    # To be safe, if simulated_default is NA, we use the actual_default_col as baseline.
+    pd_base <- sim_static$data$simulated_default
+    pd_base[is.na(pd_base)] <- sim_static$data[[config$actual_default_col]][is.na(pd_base)]
+    
+    # If it's still NA (e.g. swap-ins with no baseline), use 0 or global mean.
+    # But usually generate_sample_data has it for everyone.
+    pd_base[is.na(pd_base)] <- 0
+    
+    N <- nrow(data)
+    
+    # Pre-fetch score columns for fast vector access
+    score_data <- data[names(cutoff_ranges)]
+    
+    # Use simple vectorized loops for maximum speed in R
+    results_list <- purrr::map(1:nrow(cutoff_combinations), function(i) {
+      combo <- cutoff_combinations[i, ]
+      
+      # Vectorized binary decision for the entire dataset
+      is_above <- rep(TRUE, N)
+      for (sc in names(cutoff_ranges)) {
+        is_above <- is_above & (score_data[[sc]] >= combo[[sc]])
+      }
+      
+      # Final pass probability
+      p_final <- is_above * p_base
+      
+      sum_p <- sum(p_final, na.rm = TRUE)
+      app_rate <- sum_p / N
+      
+      if (sum_p > 0) {
+        # Weighted PD
+        def_rate <- sum(p_final * pd_base, na.rm = TRUE) / sum_p
+      } else {
+        def_rate <- 0
+      }
+      
+      constraints_met <- (def_rate <= target_default_rate) && (app_rate >= min_approval_rate)
+      
+      res <- tibble::tibble(
+        combination_id = i,
+        overall_approval_rate = app_rate,
+        overall_default_rate = def_rate,
+        constraints_met = constraints_met,
+        tradeoff_score = app_rate - (5 * def_rate)
+      )
+      dplyr::bind_cols(res, tibble::as_tibble(combo %>% dplyr::select(-combination_id), .name_repair = "unique_quiet"))
+    }, .progress = TRUE)
+    
+    return(dplyr::bind_rows(results_list))
   }
 
   eval_fun <- if (parallel) furrr::future_map_dfr else purrr::map_dfr
@@ -230,13 +295,14 @@ calculate_metrics <- function(sim_data, method = c("stochastic", "analytical")) 
     approval_rate <- mean(sim_data$new_approval, na.rm = TRUE)
     
     # default_rate is the sum of expected bads / sum of expected volumes
-    # We must only sum new_approval where simulated_default is not NA,
-    # to match the behavior of mean(..., na.rm = TRUE)
+    # We must weight the individual outcome/PD by the pass probability
     has_outcome <- !is.na(sim_data$simulated_default)
-    exp_hired_with_outcome <- sum(sim_data$new_approval[has_outcome], na.rm = TRUE)
+    exp_approved <- sum(sim_data$new_approval, na.rm = TRUE)
     
-    if (exp_hired_with_outcome > 0) {
-        default_rate <- sum(sim_data$simulated_default[has_outcome], na.rm = TRUE) / exp_hired_with_outcome
+    if (exp_approved > 0) {
+        # sum(prob_pass * expected_pd_if_passed) / sum(prob_pass)
+        default_rate <- sum(sim_data$new_approval[has_outcome] * 
+                           sim_data$simulated_default[has_outcome], na.rm = TRUE) / exp_approved
     } else {
         default_rate <- 0
     }

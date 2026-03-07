@@ -322,19 +322,24 @@ classify_scenarios <- function(data, policy, new_approval_col) {
   n <- nrow(data)
   res <- rep(NA_character_, n)
 
-  # Extract columns as vectors once to ensure consistency
-  old_app <- as.integer(data[[policy$current_approval_col]])
-  new_app <- as.integer(data[[new_approval_col]])
+  # Extract columns
+  old_app <- data[[policy$current_approval_col]]
+  new_app <- data[[new_approval_col]]
 
-  # Handle NAs
-  old_app[is.na(old_app)] <- 0
-  new_app[is.na(new_app)] <- 0
+  # Handle NAs and cast to binary flag for categorization
+  # In analytical mode, anyone with > 0 pass probability is "approved" for categorization
+  # The actual intensity is handled by weights in summary functions.
+  old_app_flag <- as.integer(old_app > 0)
+  new_app_flag <- as.integer(new_app > 0)
+
+  old_app_flag[is.na(old_app_flag)] <- 0
+  new_app_flag[is.na(new_app_flag)] <- 0
 
   # Vectorized assignments
-  res[old_app == 0 & new_app == 1] <- "swap_in"
-  res[old_app == 1 & new_app == 0] <- "swap_out"
-  res[old_app == 1 & new_app == 1] <- "keep_in"
-  res[old_app == 0 & new_app == 0] <- "keep_out"
+  res[old_app_flag == 0 & new_app_flag == 1] <- "swap_in"
+  res[old_app_flag == 1 & new_app_flag == 0] <- "swap_out"
+  res[old_app_flag == 1 & new_app_flag == 1] <- "keep_in"
+  res[old_app_flag == 0 & new_app_flag == 0] <- "keep_out"
 
   data$scenario <- res
   return(data)
