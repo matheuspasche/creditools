@@ -1,3 +1,7 @@
+# Internal environment for package state
+existing_warnings <- new.env(parent = emptyenv())
+existing_warnings$warned_no_stress <- FALSE
+
 #' Run a credit policy simulation with multiple stages
 #'
 #' @description
@@ -52,6 +56,8 @@ run_simulation <- function(data, policy, method = c("stochastic", "analytical"),
 
   # This will hold the logical vector of approvals at each stage
   stage_approval_cols <- list()
+  # Initialize with full approval probability
+  data$pass_prob_funnel <- rep(1.0, nrow(data))
 
   if (!quiet && length(policy$simulation_stages) > 0) {
     pb <- cli::cli_progress_bar("Simulating funnel stages", total = length(policy$simulation_stages))
@@ -80,9 +86,7 @@ run_simulation <- function(data, policy, method = c("stochastic", "analytical"),
       }
     } else {
       # Analytical mode: accumulate probabilities
-      if (i == 1) {
-        data$pass_prob_funnel <- rep(1.0, nrow(data))
-      }
+      # pass_prob_funnel already initialized to 1.0
 
       # Probability of passing THIS stage
       # Store the INDIVIDUAL stage result in the column
@@ -111,8 +115,12 @@ run_simulation <- function(data, policy, method = c("stochastic", "analytical"),
 
   # Determine final approval status under the new policy
   if (method == "stochastic") {
-    final_approval_flags <- purrr::map(data[unlist(stage_approval_cols)], function(col) col == 1 & !is.na(col))
-    data$new_approval <- as.integer(Reduce(`&`, final_approval_flags))
+    if (length(stage_approval_cols) == 0) {
+      data$new_approval <- rep(1L, nrow(data))
+    } else {
+      final_approval_flags <- purrr::map(data[unlist(stage_approval_cols)], function(col) col == 1 & !is.na(col))
+      data$new_approval <- as.integer(Reduce(`&`, final_approval_flags))
+    }
   } else {
     # In analytical mode, new_approval IS the pass_prob_funnel
     data$new_approval <- data$pass_prob_funnel
@@ -143,6 +151,7 @@ run_simulation <- function(data, policy, method = c("stochastic", "analytical"),
 }
 
 #' Generic function to simulate a single stage
+#' @return A numeric or integer vector of simulated stage outcomes.
 #' @keywords internal
 #' @export
 simulate_stage <- function(data, stage, policy, method = c("stochastic", "analytical")) {
@@ -171,8 +180,7 @@ simulate_stage.stage_cutoff <- function(data, stage, policy, method = c("stochas
   if (method == "analytical") {
     return(as.numeric(res))
   }
-
-  return(res)
+  return(as.integer(res))
 }
 
 #' Simulate a rate-based stage (e.g., conversion)
@@ -290,7 +298,7 @@ simulate_stage.stage_filter <- function(data, stage, policy, method = c("stochas
       if (method == "analytical") {
         return(as.numeric(res))
       }
-      return(res)
+      return(as.integer(res))
     },
     error = function(e) {
       cli::cli_abort(
@@ -316,6 +324,7 @@ simulate_stage.default <- function(data, stage, policy) {
 # --- Helper and Core Logic Functions ---
 
 #' Validate inputs for a simulation run
+#' @return Boolean TRUE if valid, otherwise an error is thrown.
 #' @keywords internal
 validate_simulation_inputs <- function(data, policy) {
   if (!inherits(policy, "credit_policy")) {
@@ -324,15 +333,14 @@ validate_simulation_inputs <- function(data, policy) {
   if (!is.data.frame(data)) {
     cli::cli_abort("{.arg data} must be a data frame.")
   }
-  if (length(policy$simulation_stages) == 0) {
-    cli::cli_abort("The policy has no defined simulation stages. Use {.fn stage_cutoff} or {.fn stage_rate} to add stages.")
-  }
+  # Relaxed: allow 0 stages (passes everyone)
   # Further validation for columns can be added here
   return(invisible(TRUE))
 }
 
 
 #' Classify scenarios based on current and new approval decisions
+#' @return The data frame with a new `scenario` column.
 #' @keywords internal
 classify_scenarios <- function(data, policy, new_approval_col) {
   # Pre-allocate result vector
@@ -364,6 +372,7 @@ classify_scenarios <- function(data, policy, new_approval_col) {
 
 
 #' Assign default outcomes for the final approved population
+#' @return The data frame with a new `simulated_default` column.
 #' @keywords internal
 assign_simulated_defaults <- function(data, policy, method = c("stochastic", "analytical")) {
   method <- match.arg(method)
@@ -386,6 +395,7 @@ assign_simulated_defaults <- function(data, policy, method = c("stochastic", "an
 }
 
 #' Simulate default outcomes for swap-in applicants
+#' @return A tibble with `applicant_id_col` and `swap_in_default` columns.
 #' @keywords internal
 simulate_swap_in_defaults <- function(data, policy, method = c("stochastic", "analytical")) {
   method <- match.arg(method)
@@ -396,11 +406,10 @@ simulate_swap_in_defaults <- function(data, policy, method = c("stochastic", "an
   }
 
   if (length(policy$stress_scenarios) == 0) {
-    if (is.null(getOption("creditools.warn_no_stress"))) {
+    if (!isTRUE(existing_warnings$warned_no_stress)) {
       cli::cli_alert_warning("No stress scenarios defined for swap-in defaults. Default outcomes will be NA.")
-      options(creditools.warn_no_stress = TRUE)
+      existing_warnings$warned_no_stress <- TRUE
     }
-
     res_df <- tibble::tibble(
       tmp_id = swap_ins[[policy$applicant_id_col]],
       swap_in_default = NA_real_
@@ -445,6 +454,7 @@ simulate_swap_in_defaults <- function(data, policy, method = c("stochastic", "an
 }
 
 #' Calculate default probability based on aggravation
+#' @return A numeric vector of probabilities.
 #' @keywords internal
 calc_prob_aggravation <- function(data, policy, scenario) {
   group_vars <- rlang::`%||%`(scenario$by, policy$risk_level_col)
@@ -508,6 +518,7 @@ calc_prob_aggravation <- function(data, policy, scenario) {
 }
 
 #' Calculate probability based on a monotonic score-to-rate trend
+#' @return A numeric vector of probabilities.
 #' @keywords internal
 calc_prob_monotonic <- function(data, score_col, params) {
   score_values <- data[[score_col]]

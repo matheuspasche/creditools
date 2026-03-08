@@ -6,6 +6,9 @@
 \usage{
 assign_simulated_defaults(data, policy, method = c("stochastic", "analytical"))
 }
+\value{
+The data frame with a new \code{simulated_default} column.
+}
 \description{
 Assign default outcomes for the final approved population
 }

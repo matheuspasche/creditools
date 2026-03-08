@@ -17,3 +17,12 @@ An updated \code{credit_policy} object.
 \description{
 Add a stage to a credit policy
 }
+\examples{
+policy <- credit_policy(
+  applicant_id_col = "id",
+  score_cols = "new_score",
+  current_approval_col = "approved",
+  actual_default_col = "defaulted"
+)
+policy <- add_stage(policy, stage_cutoff("score", list(new_score = 600)))
+}

@@ -21,6 +21,7 @@
 #' @param method The simulation method: `"stochastic"` (default) for row-by-row sampling
 #'   or `"analytical"` for expected value calculation (reweighting).
 #' @param parallel A logical flag indicating whether to use parallel processing.
+#' @param n_cores The number of CPU cores to use for parallel processing. Defaults to
 #'   all available cores minus one.
 #'
 #' @return A data frame with the single best combination of cutoffs found, along

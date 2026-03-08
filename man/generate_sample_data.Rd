@@ -59,11 +59,11 @@ in risk deciles), mirroring the structure used in the
 When \code{complex_demographics = TRUE}, additional columns emulate a real
 underwriting funnel:
 \itemize{
-\item \code{id_valid}: proxy for CPF/document validation (≈ 0.5\% inválidos)
-\item \code{age}: applicant age with a small left tail below 19 anos (≈ 0.3\%)
+\item \code{id_valid}: proxy for CPF/document validation (˜ 0.5\% invalid)
+\item \code{age}: applicant age with a small left tail below 19 years (˜ 0.3\%)
 \item \code{bureau_derogatory}: negative registry amount in a credit bureau, with
-≈ 10\% of the population above a high-risk threshold (R$300+)
-\item \code{vintage}: monthly cohort (safra) across a fixed analysis window
+˜ 10\% of the population above a high-risk threshold (R$300+)
+\item \code{vintage}: monthly cohort across a fixed analysis window
 }
 
 The generation process is based on a latent variable model:

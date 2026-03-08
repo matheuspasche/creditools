@@ -23,6 +23,23 @@ A list containing:
 High-level business comparison between two policy simulations.
 Calculates delta production, delta bad debt, and swap analytics.
 }
+\examples{
+sim_new <- run_simulation(applicants, credit_policy(
+  applicant_id_col = "id",
+  score_cols = "new_score",
+  current_approval_col = "approved",
+  actual_default_col = "defaulted",
+  simulation_stages = list(stage_cutoff("score", list(new_score = 600)))
+))
+sim_old <- run_simulation(applicants, credit_policy(
+  applicant_id_col = "id",
+  score_cols = "old_score",
+  current_approval_col = "approved",
+  actual_default_col = "defaulted",
+  simulation_stages = list(stage_cutoff("score", list(old_score = 500)))
+))
+compare_policies(sim_new, sim_old)
+}
 \seealso{
 Other analysis: 
 \code{\link{run_tradeoff_analysis}()},

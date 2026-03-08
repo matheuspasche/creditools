@@ -17,3 +17,7 @@ A \code{ggplot} object (invisibly), after drawing the plot.
 \description{
 Plot method for credit_risk_groups objects
 }
+\examples{
+groups <- find_risk_groups(applicants, "old_score", "defaulted", "vintage", max_groups = 5)
+plot(groups)
+}

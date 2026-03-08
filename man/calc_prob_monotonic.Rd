@@ -6,6 +6,9 @@
 \usage{
 calc_prob_monotonic(data, score_col, params)
 }
+\value{
+A numeric vector of probabilities.
+}
 \description{
 Calculate probability based on a monotonic score-to-rate trend
 }

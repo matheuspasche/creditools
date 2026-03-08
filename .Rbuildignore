@@ -20,8 +20,9 @@
 ^test_out\.txt$
 ^tests\.log$
 ^update_issue\.R$
-^.*\.html$
+^vignettes/.*\.html$
 ^.*\.csv$
 ^.*\.png$
 ^.*\.tar\.gz$
 ^HANDOVER_v0\.4\.0\.md$
+^walkthrough\.md$

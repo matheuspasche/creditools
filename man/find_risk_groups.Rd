@@ -50,3 +50,19 @@ the scores, generates a 1D risk ranking based on expected defaults, and applies
 statistical pruning algorithms (Volume Pruning and Non-Crossing Stability Pruning)
 to merge statistically insignificant or overlapping bands across time (vintages).
 }
+\examples{
+# Use the built-in applicants dataset
+groups <- find_risk_groups(
+    data = applicants,
+    score_cols = "old_score",
+    default_col = "defaulted",
+    time_col = "vintage",
+    max_groups = 5
+)
+
+# View the distribution of PD across groups
+print(groups$report)
+
+# Visualize the group stability over time
+plot(groups)
+}

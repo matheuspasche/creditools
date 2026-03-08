@@ -16,6 +16,9 @@ must exist in the data frame during simulation.}
 \item{observed_outcome_col}{The column in the original data that contains the
 observed outcome for this stage (0 or 1), if it exists.}
 }
+\value{
+A \code{credit_policy_stage} object of type \code{filter}.
+}
 \description{
 \code{stage_filter()} defines a stage where approval is strictly determined by a
 logical condition string (e.g., \code{"idade >= 18"} or \code{"status == 'Válido'"}).

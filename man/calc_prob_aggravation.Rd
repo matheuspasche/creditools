@@ -6,6 +6,9 @@
 \usage{
 calc_prob_aggravation(data, policy, scenario)
 }
+\value{
+A numeric vector of probabilities.
+}
 \description{
 Calculate default probability based on aggravation
 }

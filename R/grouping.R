@@ -28,6 +28,21 @@
 #' @importFrom tidyr drop_na pivot_wider
 #' @export
 #'
+#' @examples
+#' # Use the built-in applicants dataset
+#' groups <- find_risk_groups(
+#'     data = applicants,
+#'     score_cols = "old_score",
+#'     default_col = "defaulted",
+#'     time_col = "vintage",
+#'     max_groups = 5
+#' )
+#'
+#' # View the distribution of PD across groups
+#' print(groups$report)
+#'
+#' # Visualize the group stability over time
+#' plot(groups)
 find_risk_groups <- function(data,
                              score_cols,
                              default_col,

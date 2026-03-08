@@ -24,9 +24,3 @@
 #'
 #' @keywords internal
 "_PACKAGE"
-
-# Global configuration messages
-.onAttach <- function(libname, pkgname) {
-  cli::cli_alert_info("creditools {packageVersion('creditools')} loaded")
-  cli::cli_alert_info("Use {.fn create_config} to set up simulation parameters")
-}

@@ -91,6 +91,15 @@ credit_policy <- function(applicant_id_col,
 #'
 #' @return An updated `credit_policy` object.
 #' @export
+#'
+#' @examples
+#' policy <- credit_policy(
+#'   applicant_id_col = "id",
+#'   score_cols = "new_score",
+#'   current_approval_col = "approved",
+#'   actual_default_col = "defaulted"
+#' )
+#' policy <- add_stage(policy, stage_cutoff("score", list(new_score = 600)))
 add_stage <- function(policy, stage) {
   if (!inherits(policy, "credit_policy")) {
     cli::cli_abort("{.arg policy} must be a {.cls credit_policy} object.")
@@ -103,6 +112,7 @@ add_stage <- function(policy, stage) {
 
 #' @rdname credit_policy
 #' @export
+#' @return A `stress_scenario` object.
 stress_aggravation <- function(factor, by = NULL) {
   structure(
     list(
@@ -116,6 +126,7 @@ stress_aggravation <- function(factor, by = NULL) {
 
 #' @rdname credit_policy
 #' @export
+#' @return A `stress_scenario` object.
 stress_monotonic_increase <- function(rate_at_min, rate_at_max, score_col, method = "linear") {
   structure(
     list(
@@ -132,6 +143,7 @@ stress_monotonic_increase <- function(rate_at_min, rate_at_max, score_col, metho
 #' @rdname credit_policy
 #' @param func For `stress_custom`, an arbitrary R function that takes the `data` frame of swap-ins and returns a numeric vector with probabilities.
 #' @export
+#' @return A `stress_scenario` object.
 stress_custom <- function(func) {
   if (!is.function(func)) {
     cli::cli_abort("{.arg func} must be an R function that takes a data frame and returns a numeric vector of probabilities/rates.")
@@ -146,6 +158,7 @@ stress_custom <- function(func) {
 }
 
 #' Low-level constructor for the `credit_policy` class
+#' @return A `credit_policy` object.
 #' @keywords internal
 new_credit_policy <- function(applicant_id_col = character(),
                               score_cols = character(),
@@ -169,6 +182,7 @@ new_credit_policy <- function(applicant_id_col = character(),
 }
 
 #' Validator for the `credit_policy` class
+#' @return The validated `credit_policy` object, invisibly.
 #' @keywords internal
 validate_credit_policy <- function(policy) {
   if (!inherits(policy, "credit_policy")) {
@@ -204,6 +218,8 @@ validate_credit_policy <- function(policy) {
 #' Print method for credit_policy
 #' @param x A `credit_policy` object.
 #' @param ... Additional arguments passed to `print`.
+#'
+#' @return The original object `x`, invisibly.
 #' @export
 print.credit_policy <- function(x, ...) {
   cli::cli_rule("Credit Simulation Policy")

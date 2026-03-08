@@ -6,6 +6,9 @@
 \usage{
 classify_scenarios(data, policy, new_approval_col)
 }
+\value{
+The data frame with a new \code{scenario} column.
+}
 \description{
 Classify scenarios based on current and new approval decisions
 }

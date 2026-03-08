@@ -15,6 +15,9 @@ the cutoffs to be applied.}
 \item{observed_outcome_col}{The column in the original data that contains the
 observed outcome for this stage (0 or 1), if it exists. Used for \code{keep_in} analysis.}
 }
+\value{
+A \code{credit_policy_stage} object of type \code{cutoff}.
+}
 \description{
 \code{stage_cutoff()} defines a stage where approval is determined by one or more
 score cutoffs. An applicant passes if their score is >= the cutoff for all

@@ -1,9 +1,15 @@
 # creditools 0.4.0
 
+*   **Built-in Data**: Introduced `applicants` dataset (20,000 records) for professional examples and vignettes.
+*   **Documentation**: Massive overhaul of all exported and internal functions to ensure 100% '@return' and '@examples' coverage.
+*   **CRAN Compliance**: 
+    - Fixed `.onAttach` startup messages to be suppressible by `packageStartupMessage()`.
+    - Removed all global state modifications (`options()`) in favor of internal package environments.
+    - Simplified library requirements in vignettes for better portability across CRAN workers.
+    - Audited all URLs to ensure `https://` protocol compliance.
 *   **Performance**: Optimized `run_simulation` logic to handle datasets with 5M+ rows efficiently.
 *   **UX**: New high-level wrapper `simulate_from_data()` for one-line analysis.
 *   **Analytics**: `stress_aggravation()` now supports dynamic factor columns.
-*   **Documentation**: Massive overhaul of README and Case Study vignette.
 
 # creditools 0.3.0
 

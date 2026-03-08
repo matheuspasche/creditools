@@ -20,3 +20,18 @@ See \code{visualize_cutoff_default()} for the expected structure of
 \code{tradeoff_data}. This function simply switches the y-axis to
 \code{approval_rate}.
 }
+\examples{
+# Use same tradeoff_data as visualize_cutoff_default
+data <- generate_sample_data(n_applicants = 1000)
+policy <- credit_policy(
+  applicant_id_col = "id",
+  score_cols = "new_score",
+  current_approval_col = "approved",
+  actual_default_col = "defaulted"
+)
+vary <- list(new_score_cutoff = seq(500, 700, 100))
+tradeoff_data <- run_tradeoff_analysis(data, policy, vary)
+tradeoff_data$cutoff <- tradeoff_data$new_score_cutoff
+tradeoff_data$score <- "new_score"
+visualize_cutoff_approval(tradeoff_data)
+}

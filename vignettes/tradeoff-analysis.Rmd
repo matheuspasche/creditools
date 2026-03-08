@@ -21,9 +21,7 @@ This vignette demonstrates how to use `creditools` to perform a trade-off analys
 First, we load the necessary packages and `creditools`.
 
 ```{r setup}
-# Ensure you have these packages installed:
-# install.packages(c("devtools", "tidyverse", "cli", "ggplot2", "furrr", "fs"))
-devtools::load_all()
+library(creditools)
 library(tidyverse)
 library(ggplot2)
 library(scales)
@@ -31,31 +29,24 @@ library(scales)
 
 ## 2. Analysis Parameters
 
-We define the parameters for our simulation. For the purpose of this vignette, we will use a smaller dataset to keep the execution time low.
-
-```{r params-vignette}
-N_APPLICANTS <- 2000000# Larger sample for more stable results
-SEED <- 42
-CUTOFF_STEP <- 50
-AGGRAVATION_FACTORS <- c(1.2, 1.5)
-```
-
-## 3. Data Generation
-
-We generate a sample dataset using `generate_sample_data`.
+We will use the package's built-in `applicants` dataset, which contains 20,000 synthetic profiles.
 
 ```{r data}
-analytical_base <- creditools::generate_sample_data(
-  n_applicants = N_APPLICANTS,
-  seed = SEED
-)
+# Load built-in data
+data(applicants)
+
+# Parameters for stress evaluation
+CUTOFF_STEP <- 50
+AGGRAVATION_FACTORS <- c(1.2, 1.5)
+
 # Pre-calculate deciles needed for stratified aggravation
-analytical_base$new_score_decile <- dplyr::ntile(analytical_base$new_score, 10)
+applicants_prepared <- applicants %>%
+  mutate(new_score_decile = dplyr::ntile(new_score, 10))
 ```
 
-## 4. Simulation using the Wrapper Function
+## 3. Simulation using the Wrapper Function
 
-Here, we use the powerful `run_tradeoff_analysis` function. We define a `base_policy` and then specify which parameters we want to vary in `vary_params`. The function handles creating the parameter grid and running all simulations.
+Here, we use the powerful `run_tradeoff_analysis` function. We define a `base_policy` and then specify which parameters we want to vary in `vary_params`.
 
 ```{r simulation}
 # Define a base policy
@@ -68,8 +59,8 @@ base_policy <- credit_policy(
 )
 
 # Define parameters to vary
-min_score <- floor(min(analytical_base$new_score) / CUTOFF_STEP) * CUTOFF_STEP
-max_score <- ceiling(max(analytical_base$new_score) / CUTOFF_STEP) * CUTOFF_STEP
+min_score <- floor(min(applicants_prepared$new_score) / CUTOFF_STEP) * CUTOFF_STEP
+max_score <- ceiling(max(applicants_prepared$new_score) / CUTOFF_STEP) * CUTOFF_STEP
 cutoff_points <- seq(min_score, max_score, by = CUTOFF_STEP)
 
 vary_params <- list(
@@ -78,34 +69,29 @@ vary_params <- list(
 )
 
 # Run the tradeoff analysis
-# For a real analysis, you could set parallel = TRUE after setting up a future plan
-# e.g. future::plan(future::multisession)
 simulation_outputs <- run_tradeoff_analysis(
-  data = analytical_base,
+  data = applicants_prepared,
   base_policy = base_policy,
   vary_params = vary_params,
-  parallel = F
+  parallel = FALSE
 )
 ```
 
-## 5. Visualization with Baseline Comparison
+## 4. Visualization with Baseline Comparison
 
 Now, we'll calculate the performance of the "current" policy (based on `old_score`) to serve as a baseline in our analysis.
 
 ```{r baseline-analysis}
 # --- Baseline Analysis for Old Score ---
-# This calculates the actual historical performance at different cutoffs for the old score
-old_score_cutoffs <- seq(floor(min(analytical_base$old_score)), ceiling(max(analytical_base$old_score)), by = 10)
+old_score_cutoffs <- seq(floor(min(applicants_prepared$old_score)), ceiling(max(applicants_prepared$old_score)), by = 10)
 
 baseline_results <- purrr::map_dfr(old_score_cutoffs, function(cutoff) {
-    # We don't need the full simulation, just a simple calculation on historical data
-    approved_population <- analytical_base %>%
-        filter(old_score >= cutoff)
+    approved_population <- applicants_prepared %>%
+        dplyr::filter(old_score >= cutoff)
     
-    approval_rate <- if (nrow(analytical_base) > 0) nrow(approved_population) / nrow(analytical_base) else 0
+    approval_rate <- if (nrow(applicants_prepared) > 0) nrow(approved_population) / nrow(applicants_prepared) else 0
     
-    # Default rate is calculated on the approved population that was actually hired
-    hired_approved_population <- approved_population %>% filter(hired == 1)
+    hired_approved_population <- approved_population %>% dplyr::filter(hired == 1)
     default_rate <- if (nrow(hired_approved_population) > 0) {
         mean(hired_approved_population$defaulted, na.rm = TRUE)
     } else {
@@ -120,13 +106,13 @@ baseline_results <- purrr::map_dfr(old_score_cutoffs, function(cutoff) {
 })
 ```
 
-We visualize the trade-off between approval rate and default rate. This plot clearly shows how, for a given approval rate, the default rate increases under more stressful scenarios. We also add the baseline for the `old_score` to see if the new score offers a better trade-off (i.e., a lower default rate for the same approval rate).
+We visualize the trade-off between approval rate and default rate.
 
 ```{r plot}
 plot_data <- simulation_outputs %>%
-  mutate(stress_scenario = paste0(round((aggravation_factor - 1) * 100), "% Aggravation"))
+  dplyr::mutate(stress_scenario = paste0(round((aggravation_factor - 1) * 100), "% Aggravation"))
 
-tradeoff_plot <- ggplot(plot_data, aes(x = approval_rate, y = default_rate, color = stress_scenario)) +
+ggplot(plot_data, aes(x = approval_rate, y = default_rate, color = stress_scenario)) +
   geom_line(size = 1.2) +
   geom_point(size = 2.5) +
   # Add the baseline for the old score
@@ -135,17 +121,9 @@ tradeoff_plot <- ggplot(plot_data, aes(x = approval_rate, y = default_rate, colo
     aes(x = approval_rate, y = default_rate),
     color = "black", linetype = "dashed", size = 1.1, inherit.aes = FALSE
   ) +
-  # Add a label for the baseline
-  ggrepel::geom_label_repel(
-    data = baseline_results %>% filter(row_number() == round(n() / 2)),
-    aes(x = approval_rate, y = default_rate, label = "Current Policy (old_score)"),
-    color = "black",
-    nudge_y = 0.005,
-    inherit.aes = FALSE
-  ) +
   labs(
     title = "Trade-off: Approval Rate vs. Default Rate",
-    subtitle = "Comparing New Score Policy vs. Current Policy Baseline",
+    subtitle = "Comparing New Score Policy vs. Current Policy Baseline (Dashed)",
     x = "Overall Approval Rate",
     y = "Average Default Rate (on Approved)",
     color = "New Policy Stress Scenario"
@@ -157,163 +135,8 @@ tradeoff_plot <- ggplot(plot_data, aes(x = approval_rate, y = default_rate, colo
     legend.position = "bottom",
     plot.title = element_text(face = "bold")
   )
-
-print(tradeoff_plot)
 ```
 
-The plot now includes a dashed black line representing the performance of the current policy. We can see that the new score provides a significant improvement: for any given approval rate, the resulting default rate is lower than it was with the old score.
+## 5. Conclusion
 
-## 6. Comparative Analysis
-
-Here we answer specific questions by comparing the new policy's performance against the current one.
-
-```{r comparative-calcs, results='asis'}
-# Get the metrics for the current "as-is" policy
-current_approval_rate <- mean(analytical_base$approved, na.rm = TRUE)
-current_default_rate <- analytical_base %>%
-  filter(approved == 1, hired == 1) %>%
-  summarise(dr = mean(defaulted, na.rm = TRUE)) %>%
-  pull(dr)
-
-cat(paste0(
-  "#### Current Policy Performance\n\n",
-  "*   **Approval Rate:** ", label_percent(accuracy = 0.1)(current_approval_rate), "\n",
-  "*   **Default Rate:** ", label_percent(accuracy = 0.1)(current_default_rate), "\n\n"
-))
-
-# Question 1: At the current approval rate, what is the new default rate?
-# We create interpolation functions for each scenario
-interp_funcs <- plot_data %>%
-  split(.$stress_scenario) %>%
-  map(~ approxfun(x = .$approval_rate, y = .$default_rate, rule = 2))
-
-new_dr_at_current_ar <- map_dbl(interp_funcs, ~ .x(current_approval_rate))
-
-cat("#### Q1: What is the new default rate if we keep the approval rate constant?\n\n")
-for (i in 1:length(new_dr_at_current_ar)) {
-  scenario_name <- names(new_dr_at_current_ar)[i]
-  dr_value <- new_dr_at_current_ar[i]
-  improvement <- (dr_value - current_default_rate) / current_default_rate
-  cat(paste0(
-    "*   Under the **", scenario_name, "** scenario, the default rate would be **",
-    label_percent(accuracy = 0.1)(dr_value), "**, a change of **",
-    label_percent(accuracy = 0.1)(improvement), "**.\n"
-  ))
-}
-
-# Question 2: To keep the current default rate, what would the new approval rate be?
-interp_funcs_ar <- plot_data %>%
-  split(.$stress_scenario) %>%
-  map(~ approxfun(x = .$default_rate, y = .$approval_rate, rule = 2))
-
-new_ar_at_current_dr <- map_dbl(interp_funcs_ar, ~ .x(current_default_rate))
-
-cat("\n#### Q2: What is the new approval rate if we keep the default rate constant?\n\n")
-for (i in 1:length(new_ar_at_current_dr)) {
-  scenario_name <- names(new_ar_at_current_dr)[i]
-  ar_value <- new_ar_at_current_dr[i]
-  improvement <- (ar_value - current_approval_rate) / current_approval_rate
-  cat(paste0(
-    "*   Under the **", scenario_name, "** scenario, the approval rate could be increased to **",
-    label_percent(accuracy = 0.1)(ar_value), "**, a change of **",
-    label_percent(accuracy = 0.1)(improvement), "**.\n"
-  ))
-}
-
-```
-
-## 7. Deeper Analysis
-
-Now we can use the results to answer more specific business questions.
-
-### Where do default rates equalize?
-
-A common question is: at what cutoff point does the default rate of a less aggressive policy (e.g., 1.2x aggravation) equal the default rate of a more aggressive one? This can inform decisions about risk appetite.
-
-Since the aggravation factor only affects the `swap_in` population, a higher cutoff means a smaller, potentially riskier `swap_in` pool, causing the default rate lines to converge.
-
-```{r intersect-plot}
-# Plot default rate vs. cutoff to see the intersection
-ggplot(plot_data, aes(x = new_score_cutoff, y = default_rate, color = stress_scenario)) +
-  geom_line(size = 1.2) +
-  geom_point(size = 2.5) +
-  labs(
-    title = "Default Rate by Cutoff and Stress Scenario",
-    subtitle = "Finding the point where default rates converge",
-    x = "New Score Cutoff",
-    y = "Average Default Rate (on Approved)",
-    color = "Stress Scenario"
-  ) +
-  scale_y_continuous(labels = scales::percent_format()) +
-  theme_minimal(base_size = 14) +
-  theme(legend.position = "bottom")
-
-# Find the intersection point programmatically
-intersection_data <- plot_data %>%
-  select(new_score_cutoff, stress_scenario, default_rate) %>%
-  pivot_wider(names_from = stress_scenario, values_from = default_rate)
-
-# Find the cutoff where the difference changes sign
-# Note: Column names are dynamic based on AGGRAVATION_FACTORS
-col_names <- paste0(round((AGGRAVATION_FACTORS - 1) * 100), "% Aggravation")
-intersection_data <- intersection_data %>%
-  mutate(diff = .data[[col_names[1]]] - .data[[col_names[2]]])
-
-# Use linear approximation to find the intersection
-# Get the two points where the sign of the difference flips
-cross_points <- intersection_data %>%
-  filter(diff > 0 | lag(diff < 0, default = TRUE)) %>%
-  slice(1:2)
-
-if (nrow(cross_points) == 2) {
-  intersection_cutoff <- approx(x = cross_points$diff, y = cross_points$new_score_cutoff, xout = 0)$y
-  cat(paste("\nEstimated cutoff where default rates equalize:", round(intersection_cutoff)))
-}
-```
-
-### Risk Profile at the Intersection Point
-
-What does the risk profile of our approved population look like at this equalizing cutoff point? We can run a single simulation there and analyze the distribution of risk deciles.
-
-```{r decile-dist-plot}
-# Use the found cutoff, or a representative one if none was found
-analysis_cutoff <- if (exists("intersection_cutoff") && !is.na(intersection_cutoff)) round(intersection_cutoff) else 600
-
-# Rerun one simulation at this specific cutoff
-sim_at_cutoff <- run_simulation(
-  data = analytical_base,
-  policy = credit_policy(
-    applicant_id_col = "id",
-    score_cols = c("old_score", "new_score"),
-    current_approval_col = "approved",
-    actual_default_col = "defaulted",
-    risk_level_col = "new_score_decile",
-    simulation_stages = list(
-      stage_cutoff(name = "credit", cutoffs = list(new_score = analysis_cutoff))
-    ),
-    # We don't need stress scenarios for this part
-    stress_scenarios = list()
-  )
-)
-
-# Compare decile distributions of keep-ins vs swap-ins
-decile_dist <- sim_at_cutoff$data %>%
-  filter(scenario %in% c("keep_in", "swap_in")) %>%
-  count(scenario, new_score_decile) %>%
-  group_by(scenario) %>%
-  mutate(proportion = n / sum(n))
-
-ggplot(decile_dist, aes(x = factor(new_score_decile), y = proportion, fill = scenario)) +
-  geom_col(position = "dodge") +
-  scale_y_continuous(labels = percent_format()) +
-  labs(
-    title = paste("Risk Profile Comparison at Cutoff =", analysis_cutoff),
-    subtitle = "Distribution of risk deciles for Keep-ins vs. Swap-ins",
-    x = "New Score Decile",
-    y = "Proportion of Population",
-    fill = "Scenario"
-  ) +
-  theme_minimal(base_size = 14)
-```
-
-This plot shows, as expected, that the `swap_in` population is concentrated in the lower (riskier) deciles compared to the `keep_in` population. This is the portfolio segment whose risk we are simulating.
+By using built-in datasets and standardized analysis pipelines, `creditools` enables rapid assessment of score performance across various economic scenarios.

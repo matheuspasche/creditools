@@ -14,6 +14,9 @@ new_credit_policy(
   stress_scenarios = list()
 )
 }
+\value{
+A \code{credit_policy} object.
+}
 \description{
 Low-level constructor for the \code{credit_policy} class
 }
