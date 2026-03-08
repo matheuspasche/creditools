@@ -357,31 +357,35 @@ simulate_swap_in_defaults <- function(data, policy, method = c("stochastic", "an
 
 #' Calculate stressed default probability via aggravation factor
 #' @keywords internal
-calc_prob_aggravation <- function(data, policy, scenario) {
+calc_prob_aggravation <- function(data, policy, scenario_obj) {
+  # Support both formal stress_scenario objects and simple factors (from tradeoff analysis)
+  # Extract values before entering dplyr pipes to avoid name collisions with 'scenario' column
+  factor_val <- if (is.list(scenario_obj)) scenario_obj$factor else as.numeric(scenario_obj)
+  by_col <- if (is.list(scenario_obj)) scenario_obj$by else NULL
+
   # Get historical default outcomes for approved population
-  # We use the risk_level_col grouping if defined
   swap_ins <- data[data$scenario == "swap_in" & !is.na(data$scenario), ]
 
-  if (!is.null(scenario$by) && scenario$by %in% names(data)) {
+  if (!is.null(by_col) && by_col %in% names(data)) {
     # Calculate historical PD per segment
     historical_pds <- data %>%
       dplyr::filter(.data[[policy$current_approval_col]] == 1) %>%
-      dplyr::group_by(.data[[scenario$by]]) %>%
+      dplyr::group_by(.data[[by_col]]) %>%
       dplyr::summarise(hist_pd = mean(.data[[policy$actual_default_col]], na.rm = TRUE), .groups = "drop")
 
     # Map back to swap-ins
     res <- swap_ins %>%
-      dplyr::left_join(historical_pds, by = scenario$by) %>%
-      dplyr::mutate(stressed_pd = pmin(.data$hist_pd * scenario$factor, 1)) %>%
+      dplyr::left_join(historical_pds, by = by_col) %>%
+      dplyr::mutate(stressed_pd = pmin(.data$hist_pd * factor_val, 1)) %>%
       dplyr::pull(.data$stressed_pd)
 
     # Fill NAs with global historical PD
     global_pd <- mean(data[[policy$actual_default_col]][data[[policy$current_approval_col]] == 1], na.rm = TRUE)
-    res[is.na(res)] <- pmin(global_pd * scenario$factor, 1)
+    res[is.na(res)] <- pmin(global_pd * factor_val, 1)
   } else {
     # Use global historical PD
     global_pd <- mean(data[[policy$actual_default_col]][data[[policy$current_approval_col]] == 1], na.rm = TRUE)
-    res <- rep(pmin(global_pd * scenario$factor, 1), nrow(swap_ins))
+    res <- rep(pmin(global_pd * factor_val, 1), nrow(swap_ins))
   }
 
   return(res)
