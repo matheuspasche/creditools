@@ -81,15 +81,27 @@ run_simulation <- function(data, policy, method = c("stochastic", "analytical"),
     } else {
       # Analytical mode: accumulate probabilities
       if (i == 1) {
-        data$pass_prob_funnel <- 1.0
+        data$pass_prob_funnel <- rep(1.0, nrow(data))
       }
 
       # Probability of passing THIS stage
       # Store the INDIVIDUAL stage result in the column
-      data[[stage_output_col]] <- simulate_stage(data, stage, policy, method = "analytical")
+      stage_res <- simulate_stage(data, stage, policy, method = "analytical")
+
+      # Safety: ensure correct length
+      if (length(stage_res) != nrow(data)) {
+        if (length(stage_res) == 0) {
+          stage_res <- rep(0, nrow(data))
+        } else if (length(stage_res) == 1) {
+          stage_res <- rep(stage_res, nrow(data))
+        } else {
+          stop("Stage simulator returned incorrect vector length.")
+        }
+      }
+
+      data[[stage_output_col]] <- stage_res
 
       # The column should represent the probability of PASSING THE FUNNEL UP TO THIS STAGE
-      # This matches the stochastic behavior where approved_X_new = 1 only if all previous were 1
       data$pass_prob_funnel <- data$pass_prob_funnel * data[[stage_output_col]]
       data[[stage_output_col]] <- data$pass_prob_funnel
     }
@@ -149,7 +161,12 @@ simulate_stage.stage_cutoff <- function(data, stage, policy, method = c("stochas
   })
 
   # Applicant passes if they meet ALL cutoffs in the stage
-  res <- as.integer(apply(approval_matrix, 1, all))
+  res <- apply(approval_matrix, 1, all)
+
+  if (length(res) == 0 && nrow(data) > 0) {
+    # If no cutoffs were defined, everyone passes this stage
+    res <- rep(TRUE, nrow(data))
+  }
 
   if (method == "analytical") {
     return(as.numeric(res))
