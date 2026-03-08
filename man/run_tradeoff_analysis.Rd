@@ -73,7 +73,6 @@ run_tradeoff_analysis(data, policy, vary)
 }
 \seealso{
 Other analysis: 
-\code{\link{compare_policies}()},
 \code{\link{summarize_results}()}
 }
 \concept{analysis}

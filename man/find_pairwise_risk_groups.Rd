@@ -36,3 +36,14 @@ cross (which geometrically blows up for 3+ scores), it iterates 1x1 (primary vs 
 primary vs challenger 2...) and generates parallel Risk Groups. Includes a progress bar mapping
 the heavy algorithmic lifting natively.
 }
+\examples{
+data(applicants)
+results <- find_pairwise_risk_groups(
+    data = applicants,
+    primary_score = "old_score",
+    challenger_scores = "new_score",
+    default_col = "defaulted",
+    time_col = "vintage",
+    max_groups = 3
+)
+}

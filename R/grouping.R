@@ -30,6 +30,7 @@
 #'
 #' @examples
 #' # Use the built-in applicants dataset
+#' data(applicants)
 #' groups <- find_risk_groups(
 #'     data = applicants,
 #'     score_cols = "old_score",
@@ -326,19 +327,33 @@ find_risk_groups <- function(data,
 #'
 #' @return A named list where each element contains the clustered Output List from `find_risk_groups` tied to a specific Challenger.
 #' @export
+#'
+#' @examples
+#' data(applicants)
+#' results <- find_pairwise_risk_groups(
+#'     data = applicants,
+#'     primary_score = "old_score",
+#'     challenger_scores = "new_score",
+#'     default_col = "defaulted",
+#'     time_col = "vintage",
+#'     max_groups = 3
+#' )
 find_pairwise_risk_groups <- function(data,
                                       primary_score,
                                       challenger_scores,
                                       default_col,
                                       time_col,
                                       ...) {
-    cli::cli_alert_info("Starting pairwise Risk Group search for 1 Primary vs {length(challenger_scores)} Challengers...")
-    pb <- cli::cli_progress_bar("Matrixing scores...", total = length(challenger_scores))
+    if (requireNamespace("cli", quietly = TRUE)) {
+        cli::cli_alert_info("Starting pairwise Risk Group search for 1 Primary vs {length(challenger_scores)} Challengers...")
+    }
 
     results <- list()
 
     for (challenger in challenger_scores) {
-        cli::cli_progress_update(id = pb, set = cli::pb_current(pb), status = paste("Matrixing:", primary_score, "x", challenger))
+        if (requireNamespace("cli", quietly = TRUE)) {
+            cli::cli_alert_info("Matrixing: {primary_score} x {challenger}")
+        }
 
         res <- find_risk_groups(
             data = data,
@@ -349,9 +364,7 @@ find_pairwise_risk_groups <- function(data,
         )
 
         results[[paste0(primary_score, "_vs_", challenger)]] <- res
-        cli::cli_progress_update(id = pb)
     }
 
-    cli::cli_progress_done(id = pb)
     return(results)
 }

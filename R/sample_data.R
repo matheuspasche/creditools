@@ -50,14 +50,15 @@
 #'
 #' @examples
 #' # Generate a sample with high correlation and moderate churn
+#' data(applicants)
 #' analytical_base <- generate_sample_data(
-#'   n_applicants = 10000,
+#'   n_applicants = 1000,
 #'   correlation = 0.8,
 #'   churn_rate = 1,
 #'   pd_multiplier = 2,
 #'   seed = 42
 #' )
-#' \dontrun{
+#' \donttest{
 #' # Check the migration
 #' table(
 #'   dplyr::ntile(analytical_base$old_score, 10),
@@ -106,7 +107,7 @@ generate_sample_data <- function(n_applicants = 20000,
   # We use a logistic function. We need to find the intercept `intercept`
   # such that the average PD is equal to `base_default_rate`.
   # A higher z (lower risk) should lead to a lower PD.
-  intercept <- log(base_default_rate / (1 - base_default_rate))
+  intercept <- log(base_default_rate / pmax(1 - base_default_rate, 0.0001))
 
   # The coefficient for z determines how predictive the scores are (dispersion).
   z_coef <- default_rate_dispersion
@@ -131,7 +132,7 @@ generate_sample_data <- function(n_applicants = 20000,
 
   # 5. Create the final dataset
   analytical_base <- tibble::tibble(
-    id = 1:n_applicants,
+    id = as.integer(1:n_applicants),
     # --- Scores ---
     old_score = round(stats::pnorm(latent_score_1) * 1000),
     new_score = round(stats::pnorm(latent_score_2) * 1000),

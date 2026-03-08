@@ -162,6 +162,7 @@ visualize_comparison <- function(comparison_data, metric = c("both", "approval",
 #' @export
 #'
 #' @examples
+#' data(applicants)
 #' groups <- find_risk_groups(applicants, "old_score", "defaulted", "vintage", max_groups = 5)
 #' plot(groups)
 plot.credit_risk_groups <- function(x, ...) {

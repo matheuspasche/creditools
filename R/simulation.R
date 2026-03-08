@@ -60,14 +60,20 @@ run_simulation <- function(data, policy, method = c("stochastic", "analytical"),
   data$pass_prob_funnel <- rep(1.0, nrow(data))
 
   if (!quiet && length(policy$simulation_stages) > 0) {
-    pb <- cli::cli_progress_bar("Simulating funnel stages", total = length(policy$simulation_stages))
+    if (requireNamespace("cli", quietly = TRUE)) {
+      cli::cli_alert_info("Simulating funnel stages (n = {length(policy$simulation_stages)})")
+    }
   }
 
   # Sequentially process each stage in the funnel
   for (i in seq_along(policy$simulation_stages)) {
-    if (!quiet) cli::cli_progress_update(id = pb)
-
     stage <- policy$simulation_stages[[i]]
+    if (!quiet) {
+      if (requireNamespace("cli", quietly = TRUE)) {
+        cli::cli_alert_info("Simulating stage {i}: {stage$name}")
+      }
+    }
+
     stage_output_col <- paste0("approved_", stage$name, "_new")
     stage_approval_cols[[i]] <- stage_output_col
 
@@ -111,8 +117,6 @@ run_simulation <- function(data, policy, method = c("stochastic", "analytical"),
     }
   }
 
-  if (!quiet && exists("pb")) cli::cli_progress_done(id = pb)
-
   # Determine final approval status under the new policy
   if (method == "stochastic") {
     if (length(stage_approval_cols) == 0) {
@@ -133,7 +137,11 @@ run_simulation <- function(data, policy, method = c("stochastic", "analytical"),
   # Assign default outcomes for the newly approved population
   data <- assign_simulated_defaults(data, policy, method = method)
 
-  if (!quiet) cli::cli_alert_success("Multi-stage simulation completed for {nrow(data)} applicants.")
+  if (!quiet) {
+    if (requireNamespace("cli", quietly = TRUE)) {
+      cli::cli_alert_success("Multi-stage simulation completed for {nrow(data)} applicants.")
+    }
+  }
 
   # Structure the output
   results <- structure(
@@ -407,7 +415,9 @@ simulate_swap_in_defaults <- function(data, policy, method = c("stochastic", "an
 
   if (length(policy$stress_scenarios) == 0) {
     if (!isTRUE(existing_warnings$warned_no_stress)) {
-      cli::cli_alert_warning("No stress scenarios defined for swap-in defaults. Default outcomes will be NA.")
+      if (requireNamespace("cli", quietly = TRUE)) {
+        cli::cli_alert_warning("No stress scenarios defined for swap-in defaults. Default outcomes will be NA.")
+      }
       existing_warnings$warned_no_stress <- TRUE
     }
     res_df <- tibble::tibble(
@@ -511,7 +521,9 @@ calc_prob_aggravation <- function(data, policy, scenario) {
     } else {
       swap_ins$agg_rate[na_idx] <- global_baseline * agg_factor[na_idx]
     }
-    cli::cli_alert_warning("Some swap-in groups had no baseline for default aggravation and used the global average.")
+    if (requireNamespace("cli", quietly = TRUE)) {
+      cli::cli_alert_warning("Some swap-in groups had no baseline for default aggravation and used the global average.")
+    }
   }
 
   return(swap_ins$agg_rate)

@@ -83,14 +83,15 @@ high-intensity tails used in the \emph{Used Vehicles} case study.
 }
 \examples{
 # Generate a sample with high correlation and moderate churn
+data(applicants)
 analytical_base <- generate_sample_data(
-  n_applicants = 10000,
+  n_applicants = 1000,
   correlation = 0.8,
   churn_rate = 1,
   pd_multiplier = 2,
   seed = 42
 )
-\dontrun{
+\donttest{
 # Check the migration
 table(
   dplyr::ntile(analytical_base$old_score, 10),

@@ -52,6 +52,7 @@ to merge statistically insignificant or overlapping bands across time (vintages)
 }
 \examples{
 # Use the built-in applicants dataset
+data(applicants)
 groups <- find_risk_groups(
     data = applicants,
     score_cols = "old_score",

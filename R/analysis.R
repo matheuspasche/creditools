@@ -275,40 +275,6 @@ run_tradeoff_analysis <- function(data,
 }
 
 
-#' Compare two credit policies
-#'
-#' @description
-#' High-level business comparison between two policy simulations.
-#' Calculates delta production, delta bad debt, and swap analytics.
-#'
-#' @param sim_new A `credit_sim_results` object for the challenger policy.
-#' @param sim_old A `credit_sim_results` object for the baseline policy.
-#'
-#' @return A list containing:
-#'   - `metrics`: A tibble with global deltas (Approval Rate, Bad Rate).
-#'   - `swaps`: A tibble with volume/bad rates for swap_in, swap_out, and keep_in.
-#'   - `ratio`: The Swap-In to Keep-In volume ratio.
-#'
-#' @importFrom dplyr summarise n mutate filter
-#' @family analysis
-#' @export
-#'
-#' @examples
-#' sim_new <- run_simulation(applicants, credit_policy(
-#'   applicant_id_col = "id",
-#'   score_cols = "new_score",
-#'   current_approval_col = "approved",
-#'   actual_default_col = "defaulted",
-#'   simulation_stages = list(stage_cutoff("score", list(new_score = 600)))
-#' ))
-#' sim_old <- run_simulation(applicants, credit_policy(
-#'   applicant_id_col = "id",
-#'   score_cols = "old_score",
-#'   current_approval_col = "approved",
-#'   actual_default_col = "defaulted",
-#'   simulation_stages = list(stage_cutoff("score", list(old_score = 500)))
-#' ))
-#' compare_policies(sim_new, sim_old)
 compare_policies <- function(sim_new, sim_old) {
   if (!inherits(sim_new, "credit_sim_results") || !inherits(sim_old, "credit_sim_results")) {
     cli::cli_abort("Both {.arg sim_new} and {.arg sim_old} must be {.cls credit_sim_results} objects.")
