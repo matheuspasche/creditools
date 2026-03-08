@@ -13,7 +13,8 @@ find_risk_groups(
   max_crossings = 1L,
   bins = 20,
   oot_date = NULL,
-  max_groups = NULL
+  max_groups = NULL,
+  quiet = FALSE
 )
 }
 \arguments{
@@ -34,6 +35,8 @@ find_risk_groups(
 \item{oot_date}{An optional cutoff Date/POSIXt object. Data where \code{time_col >= oot_date} will be preserved exclusively for Out-Of-Time (OOT) validation reporting.}
 
 \item{max_groups}{An optional integer specifying the maximum number of risk groups to return. If NULL, pruning is driven solely by volume and stability thresholds.}
+
+\item{quiet}{Whether to suppress progress and status messages. Default is FALSE.}
 }
 \value{
 A list containing:

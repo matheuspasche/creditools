@@ -62,6 +62,7 @@ run_simulation <- function(data, policy, method = c("stochastic", "analytical"),
   if (!quiet && length(policy$simulation_stages) > 0) {
     if (requireNamespace("cli", quietly = TRUE)) {
       cli::cli_alert_info("Simulating funnel stages (n = {length(policy$simulation_stages)})")
+      pb <- try(cli::cli_progress_bar("Simulating funnel stages", total = length(policy$simulation_stages)), silent = TRUE)
     }
   }
 
@@ -71,6 +72,9 @@ run_simulation <- function(data, policy, method = c("stochastic", "analytical"),
     if (!quiet) {
       if (requireNamespace("cli", quietly = TRUE)) {
         cli::cli_alert_info("Simulating stage {i}: {stage$name}")
+        if (exists("pb") && !inherits(pb, "try-error")) {
+          try(cli::cli_progress_update(id = pb), silent = TRUE)
+        }
       }
     }
 
@@ -136,6 +140,10 @@ run_simulation <- function(data, policy, method = c("stochastic", "analytical"),
 
   # Assign default outcomes for the newly approved population
   data <- assign_simulated_defaults(data, policy, method = method)
+
+  if (!quiet && exists("pb") && !inherits(pb, "try-error")) {
+    try(cli::cli_progress_done(id = pb), silent = TRUE)
+  }
 
   if (!quiet) {
     if (requireNamespace("cli", quietly = TRUE)) {

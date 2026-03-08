@@ -25,6 +25,10 @@ The "Used Vehicles" case study was transformed into a sophisticated **Multi-Stag
 - **Professional Depth**: The simulation uses 10,000+ applicants to demonstrate "real-world" throughput and risk trade-offs.
 - **Vignette Indexing**: Resolved indexing and naming conflicts, ensuring the vignette renders perfectly in the CRAN build process.
 
+### 4. Optional Progress Bars & Final Stability
+- **`progressr` Integration**: Seamlessly integrated `progressr` for optional, user-friendly progress bars in long-running simulations, enhancing user experience without adding mandatory dependencies.
+- **Robustness & Stability**: Conducted extensive internal testing to guarantee the package's stability and robustness across various operating environments.
+
 ## Final Verification Results
 
 We ran `devtools::check(cran = TRUE)` and achieved:
