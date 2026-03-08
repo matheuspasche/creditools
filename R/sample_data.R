@@ -9,10 +9,10 @@
 #'
 #' When `complex_demographics = TRUE`, additional columns emulate a real
 #' underwriting funnel:
-#' - `id_valid`: proxy for CPF/document validation (˜ 0.5% invalid)
-#' - `age`: applicant age with a small left tail below 19 years (˜ 0.3%)
+#' - `id_valid`: proxy for CPF/document validation (~ 0.5% invalid)
+#' - `age`: applicant age with a small left tail below 19 years (~ 0.3%)
 #' - `bureau_derogatory`: negative registry amount in a credit bureau, with
-#'   ˜ 10% of the population above a high-risk threshold (R$300+)
+#'   ~ 10% of the population above a high-risk threshold (R$300+)
 #' - `vintage`: monthly cohort across a fixed analysis window
 #'
 #' The generation process is based on a latent variable model:

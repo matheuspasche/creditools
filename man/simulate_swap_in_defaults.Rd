@@ -4,7 +4,12 @@
 \alias{simulate_swap_in_defaults}
 \title{Simulate default outcomes for swap-in applicants}
 \usage{
-simulate_swap_in_defaults(data, policy, method = c("stochastic", "analytical"))
+simulate_swap_in_defaults(
+  data,
+  policy,
+  method = c("stochastic", "analytical"),
+  quiet = FALSE
+)
 }
 \value{
 A tibble with \code{applicant_id_col} and \code{swap_in_default} columns.

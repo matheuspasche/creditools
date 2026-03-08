@@ -17,23 +17,22 @@
 #' @export
 #'
 #' @examples
-#' # This example builds on the one from ?run_simulation
-#' sample_data <- generate_sample_data(n_applicants = 1000, seed = 42)
-#' sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
-#' my_policy <- credit_policy(
-#'   applicant_id_col = "id",
-#'   score_cols = c("old_score", "new_score"),
-#'   current_approval_col = "approved",
-#'   actual_default_col = "defaulted",
-#'   risk_level_col = "new_score_decile",
-#'   simulation_stages = list(
-#'     stage_cutoff(name = "credit_score", cutoffs = list(new_score = 600))
-#'   )
-#' )
-#' results <- run_simulation(data = sample_data, policy = my_policy)
-#'
-#' # Summarize results by scenario and risk decile
-#' summarize_results(results, by = "new_score_decile")
+#' # sample_data <- generate_sample_data(n_applicants = 1000, seed = 42)
+#' # sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
+#' # my_policy <- credit_policy(
+#' #   applicant_id_col = "id",
+#' #   score_cols = c("old_score", "new_score"),
+#' #   current_approval_col = "approved",
+#' #   actual_default_col = "defaulted",
+#' #   risk_level_col = "new_score_decile",
+#' #   simulation_stages = list(
+#' #     stage_cutoff(name = "credit_score", cutoffs = list(new_score = 600))
+#' #   )
+#' # )
+#' # results <- run_simulation(data = sample_data, policy = my_policy)
+#' #
+#' # # Summarize results by scenario and risk decile
+#' # summarize_results(results, by = "new_score_decile")
 summarize_results <- function(results, by = NULL) {
   if (!inherits(results, "credit_sim_results")) {
     cli::cli_abort("{.arg results} must be a {.cls credit_sim_results} object from {.fn run_simulation}.")
@@ -42,20 +41,14 @@ summarize_results <- function(results, by = NULL) {
   data <- results$data
   policy <- results$metadata$policy
   # A robust check for analytical: does new_approval contain fractions?
-  # In run_simulation, analytical results are always numeric [0,1]
-  # We check if it's numeric and has any values that are NOT exactly 0 or 1.
-  # Also check if it's explicitly numeric.
   is_analytical <- is.numeric(data$new_approval) &&
     (any(data$new_approval > 0 & data$new_approval < 1, na.rm = TRUE) ||
       any(data$simulated_default > 0 & data$simulated_default < 1, na.rm = TRUE))
 
-  # If it's a baseline run with no rate stages, it might be all 0/1 but still numeric.
-  # We check the method used in the metadata if available.
   if (is.numeric(data$new_approval) && !is_analytical) {
     if (!is.null(results$metadata$method) && results$metadata$method == "analytical") {
       is_analytical <- TRUE
     } else {
-      # Fallback: if it's numeric and we are in a context that likely is analytical
       is_analytical <- TRUE
     }
   }
@@ -77,9 +70,14 @@ summarize_results <- function(results, by = NULL) {
       dplyr::summarise(
         Applicants = dplyr::n(),
         Approved = sum(.data$new_approval, na.rm = TRUE),
-        Hired = sum(.data$new_approval, na.rm = TRUE), # In Stochastic, Approved=Hired if no conversion stage
-        # Note: Default rate is calculated only on the approved population
-        Bad_Rate = mean(.data$simulated_default[.data$new_approval == 1], na.rm = TRUE),
+        Hired = sum(.data$new_approval, na.rm = TRUE),
+        Bad_Rate = dplyr::case_when(
+          # For swap_out/keep_out, use observed historical PD
+          all(.data$scenario %in% c("swap_out", "keep_out")) ~
+            mean(.data[[policy$actual_default_col]], na.rm = TRUE),
+          # For swap_in/keep_in, use simulated PD (analytical or mean of stochastic)
+          TRUE ~ mean(.data$simulated_default, na.rm = TRUE)
+        ),
         .groups = "drop"
       )
   } else {
@@ -90,10 +88,11 @@ summarize_results <- function(results, by = NULL) {
         Applicants = dplyr::n(),
         Approved = sum(.data$new_approval, na.rm = TRUE),
         Hired = sum(.data$new_approval, na.rm = TRUE),
-        Bad_Rate = ifelse(sum(.data$new_approval, na.rm = TRUE) > 0,
-          sum(.data$simulated_default * .data$new_approval, na.rm = TRUE) /
-            sum(.data$new_approval, na.rm = TRUE),
-          0
+        Bad_Rate = dplyr::case_when(
+          all(.data$scenario %in% c("swap_out", "keep_out")) ~
+            mean(.data[[policy$actual_default_col]], na.rm = TRUE),
+          TRUE ~ sum(.data$simulated_default * .data$new_approval, na.rm = TRUE) /
+            pmax(sum(.data$new_approval, na.rm = TRUE), 1e-6)
         ),
         .groups = "drop"
       )

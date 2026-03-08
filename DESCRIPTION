@@ -1,6 +1,3 @@
-Package: creditools
-Title: Credit Risk Simulation and Trade-Off Analysis
-Version: 0.4.0
 Authors@R: 
     person("Matheus", "Pasche", email = "matheuspasche@outlook.com", role = c("aut", "cre", "cph"))
 Description: Perform forward-looking credit risk analysis and policy

@@ -2,14 +2,11 @@
 % Please edit documentation in R/simulation.R
 \name{calc_prob_monotonic}
 \alias{calc_prob_monotonic}
-\title{Calculate probability based on a monotonic score-to-rate trend}
+\title{Calculate default probability for monotonic increase stress}
 \usage{
-calc_prob_monotonic(data, score_col, params)
-}
-\value{
-A numeric vector of probabilities.
+calc_prob_monotonic(swap_ins, score_col, scenario)
 }
 \description{
-Calculate probability based on a monotonic score-to-rate trend
+Calculate default probability for monotonic increase stress
 }
 \keyword{internal}

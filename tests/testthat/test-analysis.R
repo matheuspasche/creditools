@@ -2,7 +2,7 @@ library(testthat)
 
 # Test the new, flexible run_tradeoff_analysis function
 test_that("run_tradeoff_analysis works with a grid of multiple parameters", {
-  
+
   # 1. Setup
   set.seed(42)
   test_data <- generate_sample_data(n_applicants = 1000)
@@ -38,7 +38,7 @@ test_that("run_tradeoff_analysis works with a grid of multiple parameters", {
   # 3. Validation
   expect_true(tibble::is_tibble(results))
   expect_equal(nrow(results), 4)
-  
+
   # Check for expected columns
   expected_cols <- c("new_score_cutoff", "aggravation_factor", "approval_rate", "default_rate")
   expect_true(all(expected_cols %in% names(results)))
@@ -46,8 +46,40 @@ test_that("run_tradeoff_analysis works with a grid of multiple parameters", {
   # Check that results are plausible
   expect_true(all(results$approval_rate >= 0 & results$approval_rate <= 1))
   expect_true(all(results$default_rate >= 0 & results$default_rate <= 1))
-  
+
   # Check that the parameters were varied correctly
   expect_equal(sort(unique(results$new_score_cutoff)), c(500, 600))
   expect_equal(sort(unique(results$aggravation_factor)), c(1.2, 1.5))
+})
+
+test_that("summarize_results correctly reports historical PD for swap-outs", {
+  # 1. Setup mock data
+  # Person 1: approved historically, rejected now (swap_out). Had default = 1.
+  # Person 2: rejected historically, approved now (swap_in).
+  test_data <- tibble::tibble(
+    id = c(1, 2),
+    old_score = c(900, 300),
+    new_score = c(300, 900),
+    approved = c(1L, 0L),
+    defaulted = c(1L, 0L),
+    vintage = rep(as.Date("2023-01-01"), 2)
+  )
+
+  policy <- credit_policy(
+    applicant_id_col = "id",
+    score_cols = "new_score",
+    current_approval_col = "approved",
+    actual_default_col = "defaulted"
+  ) %>% add_stage(stage_cutoff(name = "new_score_filter", cutoffs = list(new_score = 600)))
+
+  # Run simulation (analytical)
+  res <- run_simulation(test_data, policy, method = "analytical", quiet = TRUE)
+
+  # 2. Summarize
+  summary_res <- summarize_results(res)
+
+  # 3. Validate
+  # Swap-out (id 1) should show Bad_Rate = 1.0 (from its historical defaulted column)
+  so_row <- summary_res[summary_res$scenario == "swap_out", ]
+  expect_equal(so_row$Bad_Rate, 1.0)
 })

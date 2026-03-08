@@ -2,11 +2,11 @@
 % Please edit documentation in R/simulation.R
 \name{simulate_stage.stage_filter}
 \alias{simulate_stage.stage_filter}
-\title{Simulate a hard-filter stage (Binary Rules)}
+\title{Simulate a logical filter stage}
 \usage{
 \method{simulate_stage}{stage_filter}(data, stage, policy, method = c("stochastic", "analytical"))
 }
 \description{
-Simulate a hard-filter stage (Binary Rules)
+Simulate a logical filter stage
 }
 \keyword{internal}

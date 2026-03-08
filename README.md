@@ -9,70 +9,57 @@
 experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 <!-- badges: end -->
 
-The goal of **creditools** is to put the computational power of an
-entire risk analytics team into a single, scalable R package. It
-provides a flexible framework for mathematically simulating and
-optimizing credit policies, now featuring **Analytical Reweighting** for
-deterministic, noise-free analysis.
+**creditools** is a professional R framework designed for Credit Risk
+Strategy and Decision Science. It provides the mathematical
+infrastructure to simulate, optimize, and validate complex credit
+policies, moving beyond static backtesting into the realm of
+**Counterfactual Policy Simulation**.
 
-## Why creditools? (The Business Value)
+In modern credit risk management, the most significant challenge is
+“Selection Bias”: you only know the performance of applicants you have
+already **approved**. When you evaluate a new policy, `creditools` fills
+this gap by modeling “Swap-Ins” (the rejected who would be approved) and
+“Swap-Outs” (the approved who would now be rejected).
 
-In modern credit risk management, finding the sweet spot of
-profitability requires testing endless permutations. `creditools` was
-designed to answer complex business questions in minutes:
+## Technical Workflow: A Step-by-Step Guide
 
-- **⚡ Analytical vs. Stochastic:** Choose between row-by-row sampling
-  (`stochastic`) or expected-value calculation (`analytical`). The
-  latter provides instant, deterministic results for tradeoff analysis.
-- **🎯 Optimal Efficient Frontier:** Automatically discover the exact
-  cutoffs needed to hit a target default rate while maximizing approval
-  volume.
-- **🧪 Surgical Stress Testing:** Inject custom stress scenarios for
-  “swap-ins” (newly approved clients) to account for unsupervised risk.
-- **🌊 Multi-Stage Funnels:** Model complex chains of decisions (Filters
-  → Cutoffs → Conversion → Anti-Fraud) using a clean, pipeable syntax.
+### 1. Counterfactual Portfolio Simulation (Vigente vs. Challenger)
 
-## Installation
+The first step in any policy revision is understanding how the
+transition impacts your portfolio metrics. We use the **Analytical
+Reweighting** engine to calculate expected values deterministically.
 
-``` r
-# install.packages("devtools")
-devtools::install_github("matheuspasche/creditools")
-```
-
-------------------------------------------------------------------------
-
-## 🚀 Quick Start: Analytical Tradeoff
-
-If you have a historical dataset, you can run a full policy impact
-analysis in seconds. Using the new `analytical` method, we calculate the
-**expected impact** without sampling noise.
+In this scenario, we evaluate a new score with a **1.5x Aggravation
+Factor** for the newly approved population (Swap-Ins). This accounts for
+the higher uncertainty inherent in previously rejected applicants.
 
 ``` r
-# 1. Generate sample data (100k applicants)
-data <- generate_sample_data(n_applicants = 100000, complex_demographics = TRUE, seed = 42)
+# Load built-in professional dataset (20,000 observations)
+data(applicants)
 
-# 2. Run high-level simulation with Analytical Method
+# Run a deterministic analytical simulation with 1.5x stress
 results <- simulate_from_data(
-  data = data,
+  data = applicants,
   current_score_col = "old_score",
-  new_score_col = "new_score",
-  new_score_cutoff = 600,
-  aggravation_factor = 1.30, # 30% stress on Swap-Ins
+  new_score_col     = "new_score",
+  new_score_cutoff  = 640,
+  aggravation_factor = 1.5,
   method = "analytical"
 )
 
-# 3. View the Business Summary with Premium Formatting
+# Transition Summary:
+# Note: Bad_Rate for 'swap_out' and 'keep_out' shows their HISTORICAL observed performance.
 results$summary %>%
-  kbl(caption = "Analytical Simulation Results (Expected Values)") %>%
-  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE) %>%
-  column_spec(5, bold = TRUE, color = "darkred")
+  mutate(Bad_Rate = percent(Bad_Rate, accuracy = 0.01)) %>%
+  kbl(caption = "Portfolio Transition Analysis (1.5x Swap-In Stress)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
 
-<table class="table table-striped table-hover table-condensed" style="width: auto !important; margin-left: auto; margin-right: auto;">
+<table class="table table-striped table-hover" style="width: auto !important; margin-left: auto; margin-right: auto;">
 
 <caption>
 
-Analytical Simulation Results (Expected Values)
+Portfolio Transition Analysis (1.5x Swap-In Stress)
 </caption>
 
 <thead>
@@ -99,7 +86,7 @@ Approved
 Hired
 </th>
 
-<th style="text-align:right;">
+<th style="text-align:left;">
 
 Bad_Rate
 </th>
@@ -119,22 +106,22 @@ keep_in
 
 <td style="text-align:right;">
 
-31847
+5826
 </td>
 
 <td style="text-align:right;">
 
-31847
+5826
 </td>
 
 <td style="text-align:right;">
 
-18231.887
+3276.902
 </td>
 
-<td style="text-align:right;font-weight: bold;color: darkred !important;">
+<td style="text-align:left;">
 
-0.0702589
+7.05%
 </td>
 
 </tr>
@@ -148,7 +135,7 @@ keep_out
 
 <td style="text-align:right;">
 
-41947
+8670
 </td>
 
 <td style="text-align:right;">
@@ -161,9 +148,9 @@ keep_out
 0.000
 </td>
 
-<td style="text-align:right;font-weight: bold;color: darkred !important;">
+<td style="text-align:left;">
 
-0.0000000
+13.03%
 </td>
 
 </tr>
@@ -177,22 +164,22 @@ swap_in
 
 <td style="text-align:right;">
 
-8020
+1314
 </td>
 
 <td style="text-align:right;">
 
-8020
+1314
 </td>
 
 <td style="text-align:right;">
 
-4818.988
+772.130
 </td>
 
-<td style="text-align:right;font-weight: bold;color: darkred !important;">
+<td style="text-align:left;">
 
-0.0988651
+11.75%
 </td>
 
 </tr>
@@ -206,7 +193,7 @@ swap_out
 
 <td style="text-align:right;">
 
-18186
+4190
 </td>
 
 <td style="text-align:right;">
@@ -219,9 +206,9 @@ swap_out
 0.000
 </td>
 
-<td style="text-align:right;font-weight: bold;color: darkred !important;">
+<td style="text-align:left;">
 
-0.0000000
+9.74%
 </td>
 
 </tr>
@@ -230,102 +217,132 @@ swap_out
 
 </table>
 
-------------------------------------------------------------------------
-
-## 🛠️ Building Complex Funnels
-
-Most credit policies involve more than just a score. Use `add_stage()`
-to build a realistic acquisition funnel.
-
-``` r
-# Define a multi-stage policy
-policy <- credit_policy(
-  applicant_id_col = "id",
-  score_cols = "new_score",
-  current_approval_col = "approved",
-  actual_default_col = "defaulted"
-) %>%
-  add_stage(stage_filter(name = "age_check", condition = "age >= 18")) %>%
-  add_stage(stage_cutoff(name = "credit_score", cutoffs = list(new_score = 550))) %>%
-  add_stage(stage_rate(name = "conversion", base_rate = 0.65))
-
-# Run the simulation
-sim_res <- run_simulation(data, policy, method = "analytical")
-
-# Plot the scenario composition
-plot(sim_res)
-```
-
-<img src="man/figures/README-complex-funnel-1.png" width="100%" />
+- **swap_in**: The “New Blood”. Applicants previously rejected but now
+  approved. Their Bad_Rate is simulated with 1.5x stress.
+- **swap_out**: The “Risk Reduction”. Historically approved applicants
+  that the new model identifies as high risk. **The Bad_Rate here
+  reflects their real historical default**, showing exactly which losses
+  you are pruning.
 
 ------------------------------------------------------------------------
 
-## 📈 Optimization & Tradeoff Analysis
+### 2. Multi-Model Optimization (The Efficient Frontier)
 
-Find the “Efficient Frontier” of your policy by varying cutoffs and
-stress factors.
+Choosing a model based on Gini or AUC is insufficient for business
+planning. You need to know which model provides the most **Approval
+Volume** for the same **Portfolio Bad Rate**.
+
+`creditools` can analyze hundreds of score/cutoff combinations at once
+to map their “Efficient Frontier.” Below, we compare the frontiers of
+the legacy model versus the new ML model, restricted to a realistic
+**0-70% Approval Rate** for professional aesthetics.
 
 ``` r
-# Define parameters to vary
-vary_params <- list(
-  new_score_cutoff = seq(450, 750, by = 50),
-  aggravation_factor = c(1.0, 1.3, 1.6)
-)
+# Generate a larger synthetic population (50,000) for high-resolution curves
+sim_data <- generate_sample_data(n_applicants = 50000, seed = 123)
 
-# Run tradeoff analysis using the analytical engine (fast & deterministic)
-tradeoff <- find_optimal_cutoffs(
-  data = data,
-  config = policy,
-  cutoff_steps = 10,
-  target_default_rate = 0.08,
-  method = "analytical"
-)
+get_frontier_data <- function(score_col) {
+  opt <- find_optimal_cutoffs(
+    data = sim_data,
+    config = credit_policy(
+      applicant_id_col = "id",
+      score_cols = score_col,
+      current_approval_col = "approved",
+      actual_default_col = "defaulted"
+    ) %>% add_stress_scenario(stress_aggravation(factor = 1.5)),
+    cutoff_steps = 30,
+    target_default_rate = 0.12,
+    method = "analytical"
+  )
+  analysis <- analyze_tradeoffs(opt)
+  df <- analysis$pareto_frontier
+  df$model <- score_col
+  return(df)
+}
 
-tradeoff %>%
-  head(5) %>%
-  kbl(caption = "Optimization Grid (Top 5 Scenarios)") %>%
-  kable_styling(bootstrap_options = c("striped", "condensed"), full_width = FALSE)
+comparison_df <- map_dfr(c("old_score", "new_score"), get_frontier_data)
+
+ggplot(comparison_df, aes(x = overall_approval_rate, y = overall_default_rate, color = model)) +
+  geom_line(size = 1.5, alpha = 0.8) +
+  geom_point(size = 2.5) +
+  scale_y_continuous(labels = percent_format(), limits = c(0, 0.12)) +
+  scale_x_continuous(labels = percent_format(), limits = c(0, 0.70)) +
+  scale_color_manual(values = c("old_score" = "#ef8a62", "new_score" = "#67a9cf")) +
+  labs(
+    title = "Efficient Frontier Comparison: Stability under 1.5x Stress",
+    subtitle = "Analysis of hundreds of score thresholds. Lower line = Superior Model.",
+    x = "Portfolio Approval Rate",
+    y = "Portfolio Default Rate (Bad Rate)",
+    color = "Model Version"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(legend.position = "bottom", panel.grid.minor = element_blank())
 ```
 
-<table class="table table-striped table-condensed" style="width: auto !important; margin-left: auto; margin-right: auto;">
+<img src="man/figures/README-comparison-plot-1.png" width="100%" />
+
+------------------------------------------------------------------------
+
+### 3. Iso-Approval Analysis: The Decision Table
+
+The core business question often is: *“If we keep the same internal
+approval volume, how much can we lower the Bad Rate?”*
+
+``` r
+# Baseline: Current Old Score Approval (~45%)
+current_approval <- mean(sim_data$approved)
+current_bad_rate <- mean(sim_data$defaulted[sim_data$approved == 1], na.rm = TRUE)
+
+# New Policy: Finding the point on the New Score frontier with the same approval
+iso_policy <- find_equivalent_policy(
+  tradeoff_results = comparison_df %>% filter(model == "new_score"),
+  target_metric = "approval_rate",
+  target_value = current_approval,
+  tolerance = 0.05
+) %>% slice(1)
+
+# Summary Comparison
+iso_summary <- tibble(
+  Metric = c("Approval Rate", "Portfolio Bad Rate"),
+  `Current Strategy (Old)` = c(percent(current_approval), percent(current_bad_rate)),
+  `Proposed Strategy (New)` = c(percent(iso_policy$overall_approval_rate), percent(iso_policy$overall_default_rate)),
+  Delta = c("0.0%", percent(iso_policy$overall_default_rate - current_bad_rate, accuracy = 0.01))
+)
+
+iso_summary %>%
+  kbl(caption = "Iso-Approval Impact Analysis (Business Decision Support)") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
+```
+
+<table class="table table-striped table-hover" style="width: auto !important; margin-left: auto; margin-right: auto;">
 
 <caption>
 
-Optimization Grid (Top 5 Scenarios)
+Iso-Approval Impact Analysis (Business Decision Support)
 </caption>
 
 <thead>
 
 <tr>
 
-<th style="text-align:right;">
+<th style="text-align:left;">
 
-combination_id
-</th>
-
-<th style="text-align:right;">
-
-overall_approval_rate
-</th>
-
-<th style="text-align:right;">
-
-overall_default_rate
+Metric
 </th>
 
 <th style="text-align:left;">
 
-constraints_met
+Current Strategy (Old)
 </th>
 
-<th style="text-align:right;">
+<th style="text-align:left;">
 
-tradeoff_score
+Proposed Strategy (New)
 </th>
 
-<th style="text-align:right;">
+<th style="text-align:left;">
 
-new_score
+Delta
 </th>
 
 </tr>
@@ -336,34 +353,48 @@ new_score
 
 <tr>
 
-<td style="text-align:right;">
+<td style="text-align:left;">
 
-1
-</td>
-
-<td style="text-align:right;">
-
-0.291408
-</td>
-
-<td style="text-align:right;">
-
-0
+Approval Rate
 </td>
 
 <td style="text-align:left;">
 
-FALSE
+50%
 </td>
 
-<td style="text-align:right;">
+<td style="text-align:left;">
 
-0.291408
+52%
 </td>
 
-<td style="text-align:right;">
+<td style="text-align:left;">
 
-0
+0.0%
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+Portfolio Bad Rate
+</td>
+
+<td style="text-align:left;">
+
+8%
+</td>
+
+<td style="text-align:left;">
+
+9%
+</td>
+
+<td style="text-align:left;">
+
+0.50%
 </td>
 
 </tr>
@@ -374,32 +405,66 @@ FALSE
 
 ------------------------------------------------------------------------
 
-## 💎 Advanced: Risk Matrix & Stability
+### 4. Ward Clustering: Monotonic Risk Segmentation
 
-Use `find_risk_groups()` to bin multiple scores into a stable Risk
-Matrix, ensuring that your risk ratings remain consistent across
-historical vintages.
+For Risk Based Pricing (RBP), you need stable risk bands (Risk Ratings).
+Standard methods (quantiles) often produce non-monotonic results in
+low-default segments.
 
-``` r
-# Find stable risk groups across 2 scores
-rbp <- find_risk_groups(
-  data = data %>% filter(approved == 1),
-  score_cols = c("old_score", "new_score"),
-  default_col = "defaulted",
-  time_col = "vintage",
-  bins = 5
-)
+`creditools` implements **Agglomerative Hierarchical Clustering using
+Ward’s Method**, modified to strictly enforce monotonicity.
 
-# Plot the default rate stability by vintage
-plot(rbp)
+#### The Mathematical Foundation
+
+The merging process minimizes the increase in the **Expected Sum of
+Squares (ESS)** at each step:
+
+``` math
+ d_{ij} = \frac{n_i n_j}{n_i + n_j} || \bar{x}_i - \bar{x}_j ||^2 
 ```
 
-<img src="man/figures/README-risk-matrix-1.png" width="100%" />
+Where $`n_i`$ is the volume in cluster $`i`$ and $`\bar{x}_i`$ is the
+centroid (mean default rate). This minimizes the intra-cluster variance,
+while `creditools` ensures that the final $`N`$ groups follow a strictly
+increasing risk order, preventing “noisy” reversals in the Risk Matrix.
+
+``` r
+# Create 20 micro-bins and merge them into 5 stable, monotonic Risk Ratings
+risk_groups <- find_risk_groups(
+  data = sim_data %>% filter(approved == 1),
+  score_cols = "new_score",
+  default_col = "defaulted",
+  time_col = "vintage",
+  bins = 20,
+  max_groups = 5,
+  min_vol_ratio = 0.02
+)
+
+# Visualize stability and monotonicity across historical cohorts
+plot(risk_groups)
+```
+
+<img src="man/figures/README-grouping-1.png" width="100%" />
 
 ------------------------------------------------------------------------
 
-## 📖 Learn More
+## Capabilities Summary
 
-Check the vignettes for deep dives into real-world use cases: - [Case
-Study: Used Vehicles](vignettes/case-study-used-vehicles.html) -
-[Tradeoff Analysis & Optimization](vignettes/tradeoff-analysis.html)
+`creditools` is built for industry-scale deployment: - **Massive
+Analysis**: Evaluate hundreds of scores and cutoff combinations
+simultaneously. - **Hierarchical Matrixing**: Generate stable, monotonic
+Risk Matrices (RBP) across multiple score dimensions. - **Governance**:
+A deterministic, reproducible framework for Justification and Model
+Transition documentation.
+
+## Installation
+
+``` r
+# install.packages("devtools")
+devtools::install_github("matheuspasche/creditools")
+```
+
+## Documentation
+
+For a detailed case study involving multi-stage funnel optimization,
+see: `vignette("multi-stage-funnel", package = "creditools")`

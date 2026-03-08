@@ -1,3 +1,13 @@
+# creditools 0.4.1
+
+*   **Analytical Precision**: Fixed `Bad_Rate` calculation for swap-out populations in both `summarize_results()` and `simulate_from_data()`. It now correctly reports historical observed PD instead of zeroing out.
+*   **English Standardization**: Standardized the entire package to English. This includes all documentation, error messages, and unit test examples (e.g., translated `idade` to `age` and `Válido` to `Valid`).
+*   **CRAN Compliance & Encoding**: 
+    - Replaced all non-ASCII characters with CRAN-compliant ASCII or Unicode escapes.
+    - Fixed duplicate vignette titles and missing YAML delimiters in `multi-stage-funnel.Rmd` and `case-study-used-vehicles.Rmd`.
+    - Improved `stage_filter()` error handling with descriptive, standardized English messages.
+*   **Release Automation**: Introduced `dev/release_audit.R`, a comprehensive auditor script to verify documentation, unit tests, character encoding, and full `R CMD check` compliance before release.
+
 # creditools 0.4.0
 
 *   **Built-in Data**: Introduced `applicants` dataset (20,000 records) for professional examples and vignettes.
@@ -30,32 +40,11 @@
   3. Maximum PD crossings over time (`max_crossings`)
   4. Tail compression (`max_groups`, optional)
 
-* Removed `time_col_format` parameter — `time_col` must now be a proper `Date` or `POSIXt` column.
-  This eliminates ambiguous parsing and simplifies the interface.
+# creditools 0.2.0
 
-## Other Improvements
-
-* Fixed `New names: ...1` warnings in `run_tradeoff_analysis()`, `simulate_swap_in_defaults()`, 
-  and `evaluate_cutoff_combinations()` by using `as_tibble_row()`, `!!col_name :=` assignment,
-  and `.name_repair = "unique_quiet"` respectively.
-
-* Updated documentation and `README.md` to reflect the new Ward algorithm, constraint hierarchy,
-  and best practices (train on approved population, not full applicant base).
-
----
-
-# creditools 0.2.1 / 0.2.0
-
-* Implemented `stress_custom(func)` to allow arbitrary closure behavior over simulation engine.
-* Enhanced `run_tradeoff_analysis` to dynamically intercept `<stage>_base_rate` from params grid.
-* Massive showcase >1.5M applicants with `future` parallel logic built natively in `README.Rmd`.
-* Structural cleaning and reduction of repository unused/non-CRAN files.
-
----
+*   **Trade-off Analysis**: Introduced `run_tradeoff_analysis()` for large-scale policy parameter search.
+*   **S3 Interface**: Refactored `credit_policy` as a formal S3 class with validation.
 
 # creditools 0.1.0
 
-* Initial development version.
-* Added functions for credit policy simulation, trade-off analysis, and optimization.
-* Added a vignette demonstrating the trade-off analysis workflow.
-* Set up package structure for CRAN submission.
+*   Initial release focus on basic PD simulation.

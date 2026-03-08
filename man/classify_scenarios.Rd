@@ -2,14 +2,11 @@
 % Please edit documentation in R/simulation.R
 \name{classify_scenarios}
 \alias{classify_scenarios}
-\title{Classify scenarios based on current and new approval decisions}
+\title{Classify applicants into transition scenarios}
 \usage{
 classify_scenarios(data, policy, new_approval_col)
 }
-\value{
-The data frame with a new \code{scenario} column.
-}
 \description{
-Classify scenarios based on current and new approval decisions
+Classify applicants into transition scenarios
 }
 \keyword{internal}
