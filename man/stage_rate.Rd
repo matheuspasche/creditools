@@ -22,6 +22,9 @@ observed outcome for this stage (0 or 1), if it exists.}
 \item{stress_by_score}{An optional named list to stress the \code{base_rate} based on a
 score's value. Uses a monotonic increase assumption. See \code{stress_monotonic_increase()}.}
 }
+\value{
+A \code{credit_policy_stage} object of type \code{rate}.
+}
 \description{
 \code{stage_rate()} defines a stage where "approval" (e.g., conversion, acceptance)
 is determined by a simulated rate. This is useful for stages that are not

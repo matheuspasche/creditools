@@ -1,22 +1,23 @@
 Package: creditools
-Title: A Toolkit for Credit Risk Simulation and Trade-Off Analysis
+Title: Credit Risk Simulation and Trade-Off Analysis
 Version: 0.4.0
 Authors@R: 
     person("Matheus", "Pasche", email = "matheuspasche@outlook.com", role = c("aut", "cre", "cph"))
-Description: Provides a comprehensive suite of tools for forward-looking credit
-    risk analysis and policy simulation. The core purpose of 'creditools' is to
-    empower risk analysts to move beyond traditional back-testing by simulating
-    the potential outcomes of new credit strategies. It allows for the creation of
-    multi-stage decision funnels (e.g., score cutoffs, fraud checks, conversion rates)
-    and models the performance of previously rejected applicants ('swap-ins') under
-    these new policies. Key features include simulating defaults for this 'swap-in'
-    population under various stress scenarios, running large-scale analyses to map
-    the trade-off between approval rates and default rates, and finding optimal
-    score cutoffs that align with business constraints. It is an essential toolkit
-    for data-driven strategy and optimization in the credit industry.
+Description: Perform forward-looking credit risk analysis and policy
+    simulation. The core purpose of 'creditools' is to empower risk
+    analysts to move beyond traditional back-testing by simulating the
+    potential outcomes of new credit strategies. It allows for the
+    creation of multi-stage decision funnels (e.g., score cutoffs, fraud
+    checks, conversion rates) and models the performance of previously
+    rejected applicants ('swap-ins') under these new policies. Key
+    features include simulating defaults for this 'swap-in' population
+    under various stress scenarios, running large-scale analyses to map
+    the trade-off between approval rates and default rates, and finding
+    optimal score cutoffs that align with business constraints. It is
+    an essential toolkit for data-driven strategy and optimization in
+    the credit industry.
 License: MIT + file LICENSE
 Encoding: UTF-8
-LazyData: true
 Roxygen: list(markdown = TRUE)
 VignetteBuilder: knitr
 URL: https://github.com/matheuspasche/creditools
@@ -32,14 +33,16 @@ Imports:
     stringr (>= 1.4.0),
     magrittr (>= 2.0.0),
     ggplot2 (>= 3.3.0),
-    furrr,
-    utils
+    furrr (>= 0.3.0),
+    utils (>= 4.0.0)
 Suggests:
     devtools,
     future,
     ggrepel,
     gridExtra,
+    kableExtra,
     knitr,
+    lubridate,
     readr,
     rmarkdown,
     scales,
@@ -49,3 +52,6 @@ Suggests:
     writexl
 Config/testthat/edition: 3
 RoxygenNote: 7.2.1
+Depends: 
+    R (>= 2.10)
+LazyData: true

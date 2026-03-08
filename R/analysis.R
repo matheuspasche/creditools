@@ -142,12 +142,10 @@ summarize_results <- function(results, by = NULL) {
 #'   `list(new_score_cutoff = seq(500, 600, 10), aggravation_factor = c(1.2, 1.5))`
 #' @param parallel A logical flag. If `TRUE`, the simulation runs in parallel
 #'   using `furrr`. Defaults to `FALSE`.
-#'
 #' @param quiet Whether to suppress progress and status messages. Default is FALSE.
 #'
-#' @return A data frame (tibble) summarizing the results for each parameter
-#'   combination. It includes columns for each varied parameter, plus
-#'   `approval_rate` and `default_rate`.
+#' @return A tibble with the results of all simulation runs, including columns for
+#'   the varied parameters in `vary_params`, plus `approval_rate` and `default_rate`.
 #'
 #' @importFrom tidyr expand_grid
 #' @importFrom purrr pmap_dfr
@@ -157,51 +155,16 @@ summarize_results <- function(results, by = NULL) {
 #' @export
 #'
 #' @examples
-#' # 1. Generate sample data and create a base policy
-#' sample_data <- generate_sample_data(n_applicants = 1000, seed = 42)
-#' sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
-#'
-#' base_policy <- credit_policy(
+#' \donttest{
+#' data <- generate_sample_data(n_applicants = 1000)
+#' policy <- credit_policy(
 #'   applicant_id_col = "id",
-#'   score_cols = c("old_score", "new_score"),
+#'   score_cols = "new_score",
 #'   current_approval_col = "approved",
-#'   actual_default_col = "defaulted",
-#'   risk_level_col = "new_score_decile",
-#'   simulation_stages = list(
-#'     # A fixed anti-fraud stage for all simulations
-#'     stage_rate(name = "anti_fraud", base_rate = 0.95)
-#'   )
+#'   actual_default_col = "defaulted"
 #' )
-#'
-#' # 2. Define parameters to vary
-#' # We will test a few cutoff points and 2 stress scenarios
-#' vary_params <- list(
-#'   new_score_cutoff = seq(500, 700, by = 50),
-#'   aggravation_factor = c(1.2, 1.5)
-#' )
-#'
-#' # 3. Run the analysis
-#' tradeoff_results <- run_tradeoff_analysis(
-#'   data = sample_data,
-#'   base_policy = base_policy,
-#'   vary_params = vary_params,
-#'   parallel = FALSE
-#' )
-#'
-#' # 4. Plot the results
-#' if (requireNamespace("ggplot2", quietly = TRUE) && requireNamespace("dplyr", quietly = TRUE)) {
-#'   library(ggplot2)
-#'   library(dplyr)
-#'   tradeoff_results %>%
-#'     mutate(Stress = paste0(round((aggravation_factor - 1) * 100), "% PD Aggravation")) %>%
-#'     ggplot(aes(x = approval_rate, y = default_rate, color = Stress)) +
-#'     geom_line() +
-#'     geom_point() +
-#'     labs(
-#'       title = "Efficient Frontier: Approval vs. Default Rate",
-#'       x = "Overall Approval Rate", y = "Average Default Rate"
-#'     ) +
-#'     theme_minimal()
+#' vary <- list(new_score_cutoff = c(500, 600))
+#' run_tradeoff_analysis(data, policy, vary)
 #' }
 run_tradeoff_analysis <- function(data,
                                   base_policy,
@@ -310,23 +273,8 @@ run_tradeoff_analysis <- function(data,
 
   return(simulation_outputs)
 }
-#' Compare two credit policies
-#'
-#' @description
-#' High-level business comparison between two policy simulations.
-#' Calculates delta production, delta bad debt, and swap analytics.
-#'
-#' @param sim_new A `credit_sim_results` object for the challenger policy.
-#' @param sim_old A `credit_sim_results` object for the baseline policy.
-#'
-#' @return A list containing:
-#'   - `metrics`: A tibble with global deltas (Approval Rate, Bad Rate).
-#'   - `swaps`: A tibble with volume/bad rates for swap_in, swap_out, and keep_in.
-#'   - `ratio`: The Swap-In to Keep-In volume ratio.
-#'
-#' @importFrom dplyr summarise n mutate filter
-#' @family analysis
-#' @export
+
+
 compare_policies <- function(sim_new, sim_old) {
   if (!inherits(sim_new, "credit_sim_results") || !inherits(sim_old, "credit_sim_results")) {
     cli::cli_abort("Both {.arg sim_new} and {.arg sim_old} must be {.cls credit_sim_results} objects.")

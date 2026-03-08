@@ -22,3 +22,18 @@ parameter combination (e.g., \code{new_score_cutoff}, \code{aggravation_factor})
 columns \code{cutoff}, \code{approval_rate}, \code{default_rate}, and \code{score} have been
 prepared by the caller.
 }
+\examples{
+data <- generate_sample_data(n_applicants = 1000)
+policy <- credit_policy(
+  applicant_id_col = "id",
+  score_cols = "new_score",
+  current_approval_col = "approved",
+  actual_default_col = "defaulted"
+)
+vary <- list(new_score_cutoff = seq(500, 700, 100))
+tradeoff_data <- run_tradeoff_analysis(data, policy, vary)
+# Add 'cutoff' and 'score' for visualization compatibility
+tradeoff_data$cutoff <- tradeoff_data$new_score_cutoff
+tradeoff_data$score <- "new_score"
+visualize_cutoff_default(tradeoff_data)
+}

@@ -10,7 +10,8 @@ find_pairwise_risk_groups(
   challenger_scores,
   default_col,
   time_col,
-  ...
+  ...,
+  quiet = FALSE
 )
 }
 \arguments{
@@ -25,6 +26,8 @@ find_pairwise_risk_groups(
 \item{time_col}{A character string with the column name representing the vintage/time cohort.}
 
 \item{...}{Additional arguments passed natively to \code{find_risk_groups()}.}
+
+\item{quiet}{Whether to suppress progress and status messages. Default is FALSE.}
 }
 \value{
 A named list where each element contains the clustered Output List from \code{find_risk_groups} tied to a specific Challenger.
@@ -35,4 +38,15 @@ against a vector of \code{challenger_scores}. Instead of attempting a massive N-
 cross (which geometrically blows up for 3+ scores), it iterates 1x1 (primary vs challenger 1,
 primary vs challenger 2...) and generates parallel Risk Groups. Includes a progress bar mapping
 the heavy algorithmic lifting natively.
+}
+\examples{
+data(applicants)
+results <- find_pairwise_risk_groups(
+    data = applicants,
+    primary_score = "old_score",
+    challenger_scores = "new_score",
+    default_col = "defaulted",
+    time_col = "vintage",
+    max_groups = 3
+)
 }

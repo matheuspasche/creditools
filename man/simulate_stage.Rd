@@ -6,6 +6,9 @@
 \usage{
 simulate_stage(data, stage, policy, method = c("stochastic", "analytical"))
 }
+\value{
+A numeric or integer vector of simulated stage outcomes.
+}
 \description{
 Generic function to simulate a single stage
 }

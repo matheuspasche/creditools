@@ -16,6 +16,7 @@
 #' @param bins An integer defining the granularity of the initial matrix grid before pruning. E.g., `bins = 20` slices each score into 20 tiles (every 5 percentiles).
 #' @param oot_date An optional cutoff Date/POSIXt object. Data where `time_col >= oot_date` will be preserved exclusively for Out-Of-Time (OOT) validation reporting.
 #' @param max_groups An optional integer specifying the maximum number of risk groups to return. If NULL, pruning is driven solely by volume and stability thresholds.
+#' @param quiet Whether to suppress progress and status messages. Default is FALSE.
 #'
 #' @return A list containing:
 #'   - `$data`: The original data frame with a new column `final_risk_group` attached to each row.
@@ -28,6 +29,22 @@
 #' @importFrom tidyr drop_na pivot_wider
 #' @export
 #'
+#' @examples
+#' # Use the built-in applicants dataset
+#' data(applicants)
+#' groups <- find_risk_groups(
+#'     data = applicants,
+#'     score_cols = "old_score",
+#'     default_col = "defaulted",
+#'     time_col = "vintage",
+#'     max_groups = 5
+#' )
+#'
+#' # View the distribution of PD across groups
+#' print(groups$report)
+#'
+#' # Visualize the group stability over time
+#' plot(groups)
 find_risk_groups <- function(data,
                              score_cols,
                              default_col,
@@ -36,7 +53,8 @@ find_risk_groups <- function(data,
                              max_crossings = 1L,
                              bins = 20,
                              oot_date = NULL,
-                             max_groups = NULL) {
+                             max_groups = NULL,
+                             quiet = FALSE) {
 
     # Basic Validation
     missing_cols <- setdiff(c(score_cols, default_col, time_col), names(data))
@@ -307,36 +325,63 @@ find_risk_groups <- function(data,
 #' @param challenger_scores A character vector containing the names of the challenger score columns.
 #' @param default_col A character string with the column name indicating the observed default (0 or 1).
 #' @param time_col A character string with the column name representing the vintage/time cohort.
+#' @param quiet Whether to suppress progress and status messages. Default is FALSE.
 #' @param ... Additional arguments passed natively to `find_risk_groups()`.
 #'
 #' @return A named list where each element contains the clustered Output List from `find_risk_groups` tied to a specific Challenger.
 #' @export
+#'
+#' @examples
+#' data(applicants)
+#' results <- find_pairwise_risk_groups(
+#'     data = applicants,
+#'     primary_score = "old_score",
+#'     challenger_scores = "new_score",
+#'     default_col = "defaulted",
+#'     time_col = "vintage",
+#'     max_groups = 3
+#' )
 find_pairwise_risk_groups <- function(data,
                                       primary_score,
                                       challenger_scores,
                                       default_col,
                                       time_col,
-                                      ...) {
-    cli::cli_alert_info("Starting pairwise Risk Group search for 1 Primary vs {length(challenger_scores)} Challengers...")
-    pb <- cli::cli_progress_bar("Matrixing scores...", total = length(challenger_scores))
+                                      ...,
+                                      quiet = FALSE) {
+    if (!quiet && requireNamespace("cli", quietly = TRUE)) {
+        cli::cli_alert_info("Starting pairwise Risk Group search for 1 Primary vs {length(challenger_scores)} Challengers...")
+        pb <- try(cli::cli_progress_bar("Matrixing scores...", total = length(challenger_scores)), silent = TRUE)
+    }
 
     results <- list()
 
     for (challenger in challenger_scores) {
-        cli::cli_progress_update(id = pb, set = cli::pb_current(pb), status = paste("Matrixing:", primary_score, "x", challenger))
+        if (!quiet && requireNamespace("cli", quietly = TRUE)) {
+            cli::cli_alert_info("Matrixing: {primary_score} x {challenger}")
+            if (exists("pb") && !inherits(pb, "try-error")) {
+                try(cli::cli_progress_update(id = pb, status = paste("Matrixing:", primary_score, "x", challenger)), silent = TRUE)
+            }
+        }
 
         res <- find_risk_groups(
             data = data,
             score_cols = c(primary_score, challenger),
             default_col = default_col,
             time_col = time_col,
+            quiet = quiet,
             ...
         )
 
         results[[paste0(primary_score, "_vs_", challenger)]] <- res
-        cli::cli_progress_update(id = pb)
+
+        if (!quiet && exists("pb") && !inherits(pb, "try-error")) {
+            try(cli::cli_progress_update(id = pb), silent = TRUE)
+        }
     }
 
-    cli::cli_progress_done(id = pb)
+    if (!quiet && exists("pb") && !inherits(pb, "try-error")) {
+        try(cli::cli_progress_done(id = pb), silent = TRUE)
+    }
+
     return(results)
 }

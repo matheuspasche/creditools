@@ -29,3 +29,11 @@ When \code{metric = "both"}, it requires the optional \code{gridExtra} package t
 installed (see \code{Suggests} in DESCRIPTION). If \code{gridExtra} is not available,
 you can still request the single-panel variants \code{"approval"} or \code{"default"}.
 }
+\examples{
+comparison_data <- data.frame(
+  score = "new_score",
+  approval_rate_change = 0.05,
+  default_rate_change = -0.01
+)
+visualize_comparison(comparison_data, metric = "approval")
+}

@@ -13,7 +13,8 @@ find_risk_groups(
   max_crossings = 1L,
   bins = 20,
   oot_date = NULL,
-  max_groups = NULL
+  max_groups = NULL,
+  quiet = FALSE
 )
 }
 \arguments{
@@ -34,6 +35,8 @@ find_risk_groups(
 \item{oot_date}{An optional cutoff Date/POSIXt object. Data where \code{time_col >= oot_date} will be preserved exclusively for Out-Of-Time (OOT) validation reporting.}
 
 \item{max_groups}{An optional integer specifying the maximum number of risk groups to return. If NULL, pruning is driven solely by volume and stability thresholds.}
+
+\item{quiet}{Whether to suppress progress and status messages. Default is FALSE.}
 }
 \value{
 A list containing:
@@ -49,4 +52,21 @@ stable risk rating from one or multiple challenger scores. It automatically matt
 the scores, generates a 1D risk ranking based on expected defaults, and applies
 statistical pruning algorithms (Volume Pruning and Non-Crossing Stability Pruning)
 to merge statistically insignificant or overlapping bands across time (vintages).
+}
+\examples{
+# Use the built-in applicants dataset
+data(applicants)
+groups <- find_risk_groups(
+    data = applicants,
+    score_cols = "old_score",
+    default_col = "defaulted",
+    time_col = "vintage",
+    max_groups = 5
+)
+
+# View the distribution of PD across groups
+print(groups$report)
+
+# Visualize the group stability over time
+plot(groups)
 }

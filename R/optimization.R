@@ -21,43 +21,45 @@
 #' @param method The simulation method: `"stochastic"` (default) for row-by-row sampling
 #'   or `"analytical"` for expected value calculation (reweighting).
 #' @param parallel A logical flag indicating whether to use parallel processing.
+#' @param n_cores The number of CPU cores to use for parallel processing. Defaults to
 #'   all available cores minus one.
 #'
 #' @return A data frame with the single best combination of cutoffs found, along
 #'   with its performance metrics. The full evaluation results are available in
 #'   the `evaluation_results` attribute of the returned object.
 #' @export
+#'
 #' @examples
-#' # This is a long-running example, wrapped in \dontrun{} for automated checks.
-#' # For a real use case, you would run this code.
-#' \dontrun{
-#'   # 1. Generate data and define a base policy
-#'   sample_data <- generate_sample_data(n_applicants = 2000, seed = 42)
-#'   base_policy <- credit_policy(
-#'     applicant_id_col = "id",
-#'     score_cols = "new_score",
-#'     current_approval_col = "approved",
-#'     actual_default_col = "defaulted"
-#'   )
+#' # Optimization example using the fast 'analytical' method
+#' \donttest{
+#' # 1. Load data and define a base policy
+#' data(applicants)
+#' base_policy <- credit_policy(
+#'   applicant_id_col = "id",
+#'   score_cols = "new_score",
+#'   current_approval_col = "approved",
+#'   actual_default_col = "defaulted"
+#' )
 #'
-#'   # 2. Find optimal cutoffs
-#'   # This will test 10 different cutoffs for "new_score"
-#'   opt_results <- find_optimal_cutoffs(
-#'     data = sample_data,
-#'     config = base_policy,
-#'     cutoff_steps = 10,
-#'     target_default_rate = 0.15,
-#'     min_approval_rate = 0.20
-#'   )
+#' # 2. Find optimal cutoffs
+#' # Using 'analytical' method is much faster for large grids
+#' opt_results <- find_optimal_cutoffs(
+#'   data = applicants,
+#'   config = base_policy,
+#'   cutoff_steps = 5,
+#'   target_default_rate = 0.15,
+#'   min_approval_rate = 0.20,
+#'   method = "analytical"
+#' )
 #'
-#'  # 3. View the single best result
-#'  print(opt_results)
+#' # 3. View the single best result
+#' print(opt_results)
 #'
-#'  # 4. Analyze the trade-offs across all tested combinations
-#'  tradeoff_analysis <- analyze_tradeoffs(opt_results)
+#' # 4. Analyze the trade-offs across all tested combinations
+#' tradeoff_analysis <- analyze_tradeoffs(opt_results)
 #'
-#'  # 5. Visualize the Pareto frontier
-#'  visualize_tradeoffs(tradeoff_analysis, type = "pareto")
+#' # 5. Visualize the Pareto frontier
+#' visualize_tradeoffs(tradeoff_analysis, type = "pareto")
 #' }
 find_optimal_cutoffs <- function(data, config,
                                  cutoff_steps = 10,
@@ -158,54 +160,54 @@ evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
     # OPTIMIZED PATH: Pre-calculate the static part of the funnel
     # This avoids re-running the full simulation logic for every combination
     cli::cli_alert_info("Analytical mode: Pre-calculating static funnel components...")
-    
+
     p_static <- config
     # Remove any existing cutoff stages that might be in the policy
     p_static$simulation_stages <- purrr::discard(p_static$simulation_stages, ~ inherits(.x, "stage_cutoff"))
-    
+
     # Run simulation once for the "rest" of the funnel
     sim_static <- run_simulation(data, p_static, method = "analytical", quiet = TRUE)
-    
+
     p_base <- sim_static$data$new_approval
     # In p_static, everyone has some pass prob. We need their simulated_default.
     # To be safe, if simulated_default is NA, we use the actual_default_col as baseline.
     pd_base <- sim_static$data$simulated_default
     pd_base[is.na(pd_base)] <- sim_static$data[[config$actual_default_col]][is.na(pd_base)]
-    
+
     # If it's still NA (e.g. swap-ins with no baseline), use 0 or global mean.
     # But usually generate_sample_data has it for everyone.
     pd_base[is.na(pd_base)] <- 0
-    
+
     N <- nrow(data)
-    
+
     # Pre-fetch score columns for fast vector access
     score_data <- data[names(cutoff_ranges)]
-    
+
     # Use simple vectorized loops for maximum speed in R
     results_list <- purrr::map(1:nrow(cutoff_combinations), function(i) {
       combo <- cutoff_combinations[i, ]
-      
+
       # Vectorized binary decision for the entire dataset
       is_above <- rep(TRUE, N)
       for (sc in names(cutoff_ranges)) {
         is_above <- is_above & (score_data[[sc]] >= combo[[sc]])
       }
-      
+
       # Final pass probability
       p_final <- is_above * p_base
-      
+
       sum_p <- sum(p_final, na.rm = TRUE)
       app_rate <- sum_p / N
-      
+
       if (sum_p > 0) {
         # Weighted PD
         def_rate <- sum(p_final * pd_base, na.rm = TRUE) / sum_p
       } else {
         def_rate <- 0
       }
-      
+
       constraints_met <- (def_rate <= target_default_rate) && (app_rate >= min_approval_rate)
-      
+
       res <- tibble::tibble(
         combination_id = i,
         overall_approval_rate = app_rate,
@@ -215,12 +217,12 @@ evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
       )
       dplyr::bind_cols(res, tibble::as_tibble(combo %>% dplyr::select(-combination_id), .name_repair = "unique_quiet"))
     }, .progress = TRUE)
-    
+
     return(dplyr::bind_rows(results_list))
   }
 
   eval_fun <- if (parallel) furrr::future_map_dfr else purrr::map_dfr
-  
+
   results <- eval_fun(
     1:nrow(cutoff_combinations),
     ~ evaluate_single_combination(.x, cutoff_combinations, data, config, target_default_rate, min_approval_rate, method),
@@ -275,7 +277,7 @@ evaluate_single_combination <- function(combo_id, cutoff_combinations, data, con
 #' @keywords internal
 calculate_metrics <- function(sim_data, method = c("stochastic", "analytical")) {
   method <- match.arg(method)
-  
+
   if (method == "stochastic") {
     # Calculate overall approval rate from the final `new_approval` flag
     approval_rate <- mean(sim_data$new_approval, na.rm = TRUE)
@@ -293,18 +295,18 @@ calculate_metrics <- function(sim_data, method = c("stochastic", "analytical")) 
     # Analytical: Expected values
     # approval_rate is the mean of probabilities
     approval_rate <- mean(sim_data$new_approval, na.rm = TRUE)
-    
+
     # default_rate is the sum of expected bads / sum of expected volumes
     # We must weight the individual outcome/PD by the pass probability
     has_outcome <- !is.na(sim_data$simulated_default)
     exp_approved <- sum(sim_data$new_approval, na.rm = TRUE)
-    
+
     if (exp_approved > 0) {
-        # sum(prob_pass * expected_pd_if_passed) / sum(prob_pass)
-        default_rate <- sum(sim_data$new_approval[has_outcome] * 
-                           sim_data$simulated_default[has_outcome], na.rm = TRUE) / exp_approved
+      # sum(prob_pass * expected_pd_if_passed) / sum(prob_pass)
+      default_rate <- sum(sim_data$new_approval[has_outcome] *
+        sim_data$simulated_default[has_outcome], na.rm = TRUE) / exp_approved
     } else {
-        default_rate <- 0
+      default_rate <- 0
     }
   }
 
@@ -388,11 +390,11 @@ find_pareto_frontier <- function(analysis_data) {
   # Sort by one objective ascending, the other descending
   sorted_data <- analysis_data %>%
     dplyr::arrange(.data$overall_approval_rate, dplyr::desc(.data$overall_default_rate))
-  
+
   pareto_front <- sorted_data[0, ] # Initialize empty frontier
-  
+
   max_approval_so_far <- -Inf
-  
+
   for (i in 1:nrow(sorted_data)) {
     # If this point has a higher approval rate than any previous point on the frontier,
     # it must be part of the frontier because it's the "best" on that axis so far.
@@ -402,7 +404,7 @@ find_pareto_frontier <- function(analysis_data) {
       max_approval_so_far <- sorted_data$overall_approval_rate[i]
     }
   }
-  
+
   return(pareto_front)
 }
 
@@ -507,8 +509,8 @@ find_equivalent_policy <- function(tradeoff_results,
 
   col_name <- if (target_metric == "approval_rate") "overall_approval_rate" else "overall_default_rate"
   if (!col_name %in% names(results)) {
-      # Try fallback names from run_tradeoff_analysis
-      col_name <- if (target_metric == "approval_rate") "approval_rate" else "default_rate"
+    # Try fallback names from run_tradeoff_analysis
+    col_name <- if (target_metric == "approval_rate") "approval_rate" else "default_rate"
   }
 
   if (!col_name %in% names(results)) {

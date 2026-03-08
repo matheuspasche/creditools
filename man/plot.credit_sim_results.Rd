@@ -10,12 +10,14 @@
 \method{plot}{creditools_simulation_from_data}(x, ...)
 }
 \arguments{
-\item{x}{A \code{creditools_simulation_from_data} object returned by
-\code{simulate_from_data()}.}
+\item{x}{A \code{credit_sim_results} object returned by
+\code{run_simulation()}.}
 
 \item{...}{Unused, included for S3 method compatibility.}
 }
 \value{
+A \code{ggplot} object (invisibly), after drawing the plot.
+
 A \code{ggplot} object (invisibly), after drawing the plot.
 }
 \description{

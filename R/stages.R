@@ -35,6 +35,7 @@ new_credit_policy_stage <- function(name, type, ...) {
 #' @param observed_outcome_col The column in the original data that contains the
 #'   observed outcome for this stage (0 or 1), if it exists. Used for `keep_in` analysis.
 #'
+#' @return A `credit_policy_stage` object of type `cutoff`.
 #' @export
 #' @examples
 #' # Defines a stage that requires a 'new_score' of at least 650
@@ -67,6 +68,7 @@ stage_cutoff <- function(name, cutoffs, observed_outcome_col = NULL) {
 #' @param stress_by_score An optional named list to stress the `base_rate` based on a
 #'   score's value. Uses a monotonic increase assumption. See `stress_monotonic_increase()`.
 #'
+#' @return A `credit_policy_stage` object of type `rate`.
 #' @export
 #' @examples
 #' # Defines a stage with a 95% pass rate (e.g., for fraud checks)
@@ -101,6 +103,7 @@ stage_rate <- function(name, base_rate, observed_outcome_col = NULL, stress_by_s
 #' @param observed_outcome_col The column in the original data that contains the
 #'   observed outcome for this stage (0 or 1), if it exists.
 #'
+#' @return A `credit_policy_stage` object of type `filter`.
 #' @export
 #' @examples
 #' # Defines a stage that rejects anyone under 18 years old

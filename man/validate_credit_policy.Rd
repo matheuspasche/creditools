@@ -6,6 +6,9 @@
 \usage{
 validate_credit_policy(policy)
 }
+\value{
+The validated \code{credit_policy} object, invisibly.
+}
 \description{
 Validator for the \code{credit_policy} class
 }

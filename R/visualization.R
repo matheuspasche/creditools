@@ -12,6 +12,21 @@
 #'
 #' @return A ggplot object.
 #' @export
+#'
+#' @examples
+#' data <- generate_sample_data(n_applicants = 1000)
+#' policy <- credit_policy(
+#'   applicant_id_col = "id",
+#'   score_cols = "new_score",
+#'   current_approval_col = "approved",
+#'   actual_default_col = "defaulted"
+#' )
+#' vary <- list(new_score_cutoff = seq(500, 700, 100))
+#' tradeoff_data <- run_tradeoff_analysis(data, policy, vary)
+#' # Add 'cutoff' and 'score' for visualization compatibility
+#' tradeoff_data$cutoff <- tradeoff_data$new_score_cutoff
+#' tradeoff_data$score <- "new_score"
+#' visualize_cutoff_default(tradeoff_data)
 visualize_cutoff_default <- function(tradeoff_data, score_col = NULL) {
   if (!is.null(score_col)) {
     tradeoff_data <- tradeoff_data %>%
@@ -41,6 +56,21 @@ visualize_cutoff_default <- function(tradeoff_data, score_col = NULL) {
 #'
 #' @return A ggplot object.
 #' @export
+#'
+#' @examples
+#' # Use same tradeoff_data as visualize_cutoff_default
+#' data <- generate_sample_data(n_applicants = 1000)
+#' policy <- credit_policy(
+#'   applicant_id_col = "id",
+#'   score_cols = "new_score",
+#'   current_approval_col = "approved",
+#'   actual_default_col = "defaulted"
+#' )
+#' vary <- list(new_score_cutoff = seq(500, 700, 100))
+#' tradeoff_data <- run_tradeoff_analysis(data, policy, vary)
+#' tradeoff_data$cutoff <- tradeoff_data$new_score_cutoff
+#' tradeoff_data$score <- "new_score"
+#' visualize_cutoff_approval(tradeoff_data)
 visualize_cutoff_approval <- function(tradeoff_data, score_col = NULL) {
   if (!is.null(score_col)) {
     tradeoff_data <- tradeoff_data %>%
@@ -79,6 +109,14 @@ visualize_cutoff_approval <- function(tradeoff_data, score_col = NULL) {
 #' @return A ggplot object, or a combined grid of two plots when
 #'   `metric = "both"`.
 #' @export
+#'
+#' @examples
+#' comparison_data <- data.frame(
+#'   score = "new_score",
+#'   approval_rate_change = 0.05,
+#'   default_rate_change = -0.01
+#' )
+#' visualize_comparison(comparison_data, metric = "approval")
 visualize_comparison <- function(comparison_data, metric = c("both", "approval", "default")) {
   metric <- match.arg(metric)
 
@@ -122,6 +160,11 @@ visualize_comparison <- function(comparison_data, metric = c("both", "approval",
 #'
 #' @return A `ggplot` object (invisibly), after drawing the plot.
 #' @export
+#'
+#' @examples
+#' data(applicants)
+#' groups <- find_risk_groups(applicants, "old_score", "defaulted", "vintage", max_groups = 5)
+#' plot(groups)
 plot.credit_risk_groups <- function(x, ...) {
   if (!inherits(x, "credit_risk_groups")) {
     cli::cli_abort("{.arg x} must be a {.cls credit_risk_groups} object.")
@@ -175,8 +218,8 @@ plot.credit_risk_groups <- function(x, ...) {
 
 #' Plot method for simulate_from_data() results
 #'
-#' @param x A `creditools_simulation_from_data` object returned by
-#'   `simulate_from_data()`.
+#' @param x A `credit_sim_results` object returned by
+#'   `run_simulation()`.
 #' @param ... Unused, included for S3 method compatibility.
 #'
 #' @return A `ggplot` object (invisibly), after drawing the plot.
@@ -198,6 +241,7 @@ plot.credit_sim_results <- function(x, ...) {
 
 #' @rdname plot.credit_sim_results
 #' @export
+#' @return A `ggplot` object (invisibly), after drawing the plot.
 plot.creditools_simulation_from_data <- function(x, ...) {
   if (!inherits(x, "creditools_simulation_from_data")) {
     cli::cli_abort("{.arg x} must be a {.cls creditools_simulation_from_data} object.")

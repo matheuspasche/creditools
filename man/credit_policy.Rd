@@ -62,6 +62,12 @@ created with \code{stress_aggravation()} or \code{stress_monotonic_increase()}.}
 }
 \value{
 A \code{credit_policy} object.
+
+A \code{stress_scenario} object.
+
+A \code{stress_scenario} object.
+
+A \code{stress_scenario} object.
 }
 \description{
 Creates a new \code{credit_policy} object, which defines all the parameters
