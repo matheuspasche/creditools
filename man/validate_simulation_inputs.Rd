@@ -2,14 +2,11 @@
 % Please edit documentation in R/simulation.R
 \name{validate_simulation_inputs}
 \alias{validate_simulation_inputs}
-\title{Validate inputs for a simulation run}
+\title{Validate inputs for simulation}
 \usage{
 validate_simulation_inputs(data, policy)
 }
-\value{
-Boolean TRUE if valid, otherwise an error is thrown.
-}
 \description{
-Validate inputs for a simulation run
+Validate inputs for simulation
 }
 \keyword{internal}

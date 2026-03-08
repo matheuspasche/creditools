@@ -21,11 +21,8 @@ A \code{credit_policy_stage} object of type \code{filter}.
 }
 \description{
 \code{stage_filter()} defines a stage where approval is strictly determined by a
-logical condition string (e.g., \code{"idade >= 18"} or \code{"status == 'Válido'"}).
+logical condition string (e.g., \code{"idade >= 18"} or \code{"status == 'V\\u00e1lido'"}).
 Applicants who evaluate to \code{FALSE} are immediately rejected from the funnel.
-}
-\details{
-Define a Hard Filter Stage
 }
 \examples{
 # Defines a stage that rejects anyone under 18 years old

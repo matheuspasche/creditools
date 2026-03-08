@@ -30,6 +30,7 @@ vignettes/.gitignore
 # Package build artifacts
 /*.tar.gz
 /*.Rcheck/
+walkthrough.md
 
 # Handoff docs
 /doc/

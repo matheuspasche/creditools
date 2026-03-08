@@ -2,14 +2,11 @@
 % Please edit documentation in R/simulation.R
 \name{calc_prob_aggravation}
 \alias{calc_prob_aggravation}
-\title{Calculate default probability based on aggravation}
+\title{Calculate stressed default probability via aggravation factor}
 \usage{
 calc_prob_aggravation(data, policy, scenario)
 }
-\value{
-A numeric vector of probabilities.
-}
 \description{
-Calculate default probability based on aggravation
+Calculate stressed default probability via aggravation factor
 }
 \keyword{internal}

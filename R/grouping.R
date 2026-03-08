@@ -12,7 +12,7 @@
 #' @param default_col A character string with the column name indicating the observed default (0 or 1).
 #' @param time_col A character string with the column name representing the vintage/time cohort (e.g., "YYYY-MM"). It will be internally coerced to Date.
 #' @param min_vol_ratio The minimum acceptable population percentage for a risk group. Groups below this threshold are merged with their nearest risk neighbor. Default is 0.05 (5%).
-#' @param max_crossings Maximum number of vintage periods where an adjacent lower-risk group can have a HIGHER observed PD than the next group (crossing). Uses absolute count, not proportion — so it is robust to small vintage windows (6-18 months). Default is `1`, meaning at most 1 month of inversion is tolerated before forcing a merge.
+#' @param max_crossings Maximum number of vintage periods where an adjacent lower-risk group can have a HIGHER observed PD than the next group (crossing). Uses absolute count, not proportion - so it is robust to small vintage windows (6-18 months). Default is `1`, meaning at most 1 month of inversion is tolerated before forcing a merge.
 #' @param bins An integer defining the granularity of the initial matrix grid before pruning. E.g., `bins = 20` slices each score into 20 tiles (every 5 percentiles).
 #' @param oot_date An optional cutoff Date/POSIXt object. Data where `time_col >= oot_date` will be preserved exclusively for Out-Of-Time (OOT) validation reporting.
 #' @param max_groups An optional integer specifying the maximum number of risk groups to return. If NULL, pruning is driven solely by volume and stability thresholds.

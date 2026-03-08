@@ -119,7 +119,7 @@ simulate_from_data <- function(data,
     # Inject Risk Ratings back to main dataset
     data <- data %>% dplyr::left_join(rg$data %>% dplyr::select(dplyr::all_of(c(applicant_id_col, "risk_rating"))), by = applicant_id_col)
 
-    cli::cli_alert_info("4. Applying {aggravation_factor}x Stress Aggravation by Risk Rating to Swap-Ins...")
+    cli::cli_h2("4. Applying {aggravation_factor}x Stress Aggravation by Risk Rating to Swap-Ins...")
 
     # Calculate Baseline Default by Risk Rating (Keep-Ins only)
     if (method == "stochastic") {
@@ -178,15 +178,24 @@ simulate_from_data <- function(data,
             Approved = sum(.data$new_approval, na.rm = TRUE),
             Hired = sum(.data$new_hired, na.rm = TRUE),
             Bad_Rate = if (method == "analytical") {
-                # Sum of expected bads / Sum of expected hired (where outcome is known)
-                denom <- sum(.data$new_hired[!is.na(.data$simulated_default)], na.rm = TRUE)
-                if (denom > 0) {
-                    sum(.data$simulated_default, na.rm = TRUE) / denom
+                # For swap_out/keep_out, we show historical observed average.
+                if (unique(.data$scenario) %in% c("swap_out", "keep_out")) {
+                    mean(.data[[actual_default_col]], na.rm = TRUE)
                 } else {
-                    0
+                    denom <- sum(.data$new_hired[!is.na(.data$simulated_default)], na.rm = TRUE)
+                    if (denom > 0) {
+                        sum(.data$simulated_default, na.rm = TRUE) / denom
+                    } else {
+                        0
+                    }
                 }
             } else {
-                mean(.data$simulated_default[.data$new_hired == 1], na.rm = TRUE)
+                # Stochastic: for dropouts, mean of historical outcome
+                if (unique(.data$scenario) %in% c("swap_out", "keep_out")) {
+                    mean(.data[[actual_default_col]], na.rm = TRUE)
+                } else {
+                    mean(.data$simulated_default[.data$new_hired == 1], na.rm = TRUE)
+                }
             },
             .groups = "drop"
         )

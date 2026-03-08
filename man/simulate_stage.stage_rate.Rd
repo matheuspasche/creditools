@@ -2,11 +2,11 @@
 % Please edit documentation in R/simulation.R
 \name{simulate_stage.stage_rate}
 \alias{simulate_stage.stage_rate}
-\title{Simulate a rate-based stage (e.g., conversion)}
+\title{Simulate a rate-based stage (e.g., Conversion or Anti-Fraud)}
 \usage{
 \method{simulate_stage}{stage_rate}(data, stage, policy, method = c("stochastic", "analytical"))
 }
 \description{
-Simulate a rate-based stage (e.g., conversion)
+Simulate a rate-based stage (e.g., Conversion or Anti-Fraud)
 }
 \keyword{internal}

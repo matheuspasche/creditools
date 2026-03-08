@@ -88,12 +88,10 @@ stage_rate <- function(name, base_rate, observed_outcome_col = NULL, stress_by_s
   )
 }
 
-#' Define a Hard Filter Stage
-#' @name stage_filter
 #' @title Define a Hard Filter Stage
 #' @description
 #' `stage_filter()` defines a stage where approval is strictly determined by a
-#' logical condition string (e.g., `"idade >= 18"` or `"status == 'Válido'"`).
+#' logical condition string (e.g., `"idade >= 18"` or `"status == 'V\u00e1lido'"`).
 #' Applicants who evaluate to `FALSE` are immediately rejected from the funnel.
 #'
 #' @param name A character string for the name of the stage (e.g., "age_rule").

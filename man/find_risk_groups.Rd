@@ -28,7 +28,7 @@ find_risk_groups(
 
 \item{min_vol_ratio}{The minimum acceptable population percentage for a risk group. Groups below this threshold are merged with their nearest risk neighbor. Default is 0.05 (5\%).}
 
-\item{max_crossings}{Maximum number of vintage periods where an adjacent lower-risk group can have a HIGHER observed PD than the next group (crossing). Uses absolute count, not proportion — so it is robust to small vintage windows (6-18 months). Default is \code{1}, meaning at most 1 month of inversion is tolerated before forcing a merge.}
+\item{max_crossings}{Maximum number of vintage periods where an adjacent lower-risk group can have a HIGHER observed PD than the next group (crossing). Uses absolute count, not proportion - so it is robust to small vintage windows (6-18 months). Default is \code{1}, meaning at most 1 month of inversion is tolerated before forcing a merge.}
 
 \item{bins}{An integer defining the granularity of the initial matrix grid before pruning. E.g., \code{bins = 20} slices each score into 20 tiles (every 5 percentiles).}
 

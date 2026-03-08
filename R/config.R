@@ -110,6 +110,35 @@ add_stage <- function(policy, stage) {
   return(policy)
 }
 
+#' Add a stress scenario to a credit policy
+#'
+#' @param policy A `credit_policy` object.
+#' @param scenario A stress scenario created with `stress_aggravation()`, `stress_monotonic_increase()`, or `stress_custom()`.
+#'
+#' @return An updated `credit_policy` object.
+#' @export
+#'
+#' @examples
+#' policy <- credit_policy(
+#'   applicant_id_col = "id",
+#'   score_cols = "new_score",
+#'   current_approval_col = "approved",
+#'   actual_default_col = "defaulted"
+#' )
+#' policy <- add_stress_scenario(policy, stress_aggravation(factor = 1.5))
+add_stress_scenario <- function(policy, scenario) {
+  if (!inherits(policy, "credit_policy")) {
+    cli::cli_abort("{.arg policy} must be a {.cls credit_policy} object.")
+  }
+  if (!inherits(scenario, "stress_scenario")) {
+    cli::cli_abort("{.arg scenario} must be a {.cls stress_scenario} object, created by {.fn stress_aggravation}, {.fn stress_monotonic_increase}, or {.fn stress_custom}.")
+  }
+
+  policy$stress_scenarios <- c(policy$stress_scenarios, list(scenario))
+  validate_credit_policy(policy)
+  return(policy)
+}
+
 #' @rdname credit_policy
 #' @export
 #' @return A `stress_scenario` object.

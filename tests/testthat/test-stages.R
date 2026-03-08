@@ -5,8 +5,8 @@ test_that("stage_filter correctly parses and drops out invalid rows", {
     # Fake Population
     df <- data.frame(
         id = 1:5,
-        idade = c(17, 18, 25, 30, NA),
-        status = c("Valido", "Invalido", "Valido", "Valido", "Valido"),
+        age = c(17, 18, 25, 30, NA),
+        status = c("Valid", "Invalid", "Valid", "Valid", "Valid"),
         old_score = c(600, 600, 600, 600, 600),
         new_score = c(600, 600, 600, 600, 600),
         approved = rep(0, 5),
@@ -15,8 +15,8 @@ test_that("stage_filter correctly parses and drops out invalid rows", {
     )
 
     # Stage Config
-    filter_1 <- stage_filter(name = "age_check", condition = "idade >= 18")
-    filter_2 <- stage_filter(name = "status_check", condition = "status == 'Valido'")
+    filter_1 <- stage_filter(name = "age_check", condition = "age >= 18")
+    filter_2 <- stage_filter(name = "status_check", condition = "status == 'Valid'")
 
     policy <- credit_policy(
         applicant_id_col = "id",
@@ -49,10 +49,10 @@ test_that("stage_filter alerts correctly on malformed conditions", {
     policy_fail <- credit_policy(
         applicant_id_col = "id",
         score_cols = c("old_score", "new_score"),
-        current_approval_col = "current_approved",
+        current_approval_col = "approved",
         actual_default_col = "defaulted",
         risk_level_col = "risk_band",
-        simulation_stages = list(stage_filter("b", "nome_inventado >= 0"))
+        simulation_stages = list(stage_filter("b", "invented_name >= 0"))
     )
 
     expect_error(run_simulation(df, policy_fail, quiet = TRUE), "Failed to evaluate filter condition")
