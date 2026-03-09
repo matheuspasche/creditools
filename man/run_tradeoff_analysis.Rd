@@ -4,13 +4,7 @@
 \alias{run_tradeoff_analysis}
 \title{Run a flexible trade-off analysis simulation}
 \usage{
-run_tradeoff_analysis(
-  data,
-  base_policy,
-  vary_params,
-  parallel = FALSE,
-  quiet = FALSE
-)
+run_tradeoff_analysis(data, base_policy, vary_params, quiet = FALSE, ...)
 }
 \arguments{
 \item{data}{A data frame containing the analytical base table.}
@@ -22,10 +16,13 @@ each simulation run.}
 a grid of all combinations of these parameters. For example:
 \code{list(new_score_cutoff = seq(500, 600, 10), aggravation_factor = c(1.2, 1.5))}}
 
-\item{parallel}{A logical flag. If \code{TRUE}, the simulation runs in parallel
-using \code{furrr}. Defaults to \code{FALSE}.}
-
 \item{quiet}{Whether to suppress progress and status messages. Default is FALSE.}
+
+\item{...}{Additional arguments passed to internal helper functions. These can
+include \code{parallel} (logical, whether to run in parallel using \code{furrr},
+defaults to \code{FALSE}) and \code{n_workers} (optional integer, number of parallel
+workers to use if \code{parallel = TRUE} and no plan is active, defaults to
+\code{future::availableCores() - 1}).}
 }
 \value{
 A tibble with the results of all simulation runs, including columns for
@@ -55,8 +52,9 @@ frontier" between approval rate and default rate) by varying multiple
 business and risk levers simultaneously.
 
 Parallel processing is supported via the \code{furrr} package. If \code{parallel} is
-\code{TRUE}, the user must configure their parallel plan beforehand (e.g.,
-using \code{future::plan(future::multisession)}).
+\code{TRUE} and the current \code{future} plan is sequential, it will automatically
+set up a \code{multisession} plan. If a non-sequential plan is already active,
+it will be respected.
 }
 \examples{
 \donttest{

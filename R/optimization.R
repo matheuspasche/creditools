@@ -20,9 +20,9 @@
 #' @param min_approval_rate The minimum acceptable overall approval rate.
 #' @param method The simulation method: `"stochastic"` (default) for row-by-row sampling
 #'   or `"analytical"` for expected value calculation (reweighting).
-#' @param parallel A logical flag indicating whether to use parallel processing.
-#' @param n_cores The number of CPU cores to use for parallel processing. Defaults to
-#'   all available cores minus one.
+#' @param ... Additional arguments passed to the simulation function, such as
+#'   `parallel` (logical, whether to use parallel processing) and `n_workers`
+#'   (integer, number of parallel workers if `parallel = TRUE`).
 #'
 #' @return A data frame with the single best combination of cutoffs found, along
 #'   with its performance metrics. The full evaluation results are available in
@@ -66,8 +66,7 @@ find_optimal_cutoffs <- function(data, config,
                                  target_default_rate = 0.05,
                                  min_approval_rate = 0.3,
                                  method = c("stochastic", "analytical"),
-                                 parallel = FALSE,
-                                 n_cores = NULL) {
+                                 ...) {
   method <- match.arg(method)
 
   validate_optimization_inputs(data, config, cutoff_steps, target_default_rate, min_approval_rate)
@@ -77,7 +76,7 @@ find_optimal_cutoffs <- function(data, config,
 
   # Evaluate all cutoff combinations
   results <- evaluate_cutoff_combinations(
-    data, config, cutoff_ranges, target_default_rate, min_approval_rate, method, parallel, n_cores
+    data, config, cutoff_ranges, target_default_rate, min_approval_rate, method, ...
   )
 
   # Find the best result from the evaluations
@@ -135,9 +134,10 @@ generate_cutoff_ranges <- function(data, score_columns, cutoff_steps) {
 
 #' @keywords internal
 evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
-                                         target_default_rate, min_approval_rate,
+                                         target_default_rate,
+                                         min_approval_rate,
                                          method = c("stochastic", "analytical"),
-                                         parallel = FALSE, n_cores = NULL) {
+                                         ...) {
   method <- match.arg(method)
   cutoff_combinations <- expand.grid(cutoff_ranges) %>%
     tibble::as_tibble(.name_repair = "unique_quiet") %>%
@@ -145,15 +145,11 @@ evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
 
   cli::cli_alert_info("Evaluating {nrow(cutoff_combinations)} cutoff combinations...")
 
-  if (parallel && method != "analytical") {
-    if (!requireNamespace("future", quietly = TRUE) || !requireNamespace("furrr", quietly = TRUE)) {
-      cli::cli_alert_warning("Parallel processing requires 'future' and 'furrr'. Using sequential processing.")
-      parallel <- FALSE
-    } else {
-      n_cores <- n_cores %||% (future::availableCores() - 1)
-      future::plan(future::multisession, workers = n_cores)
-      on.exit(future::plan(future::sequential))
-    }
+  if (method != "analytical") {
+    parallel_setup <- .setup_parallel(...)
+    parallel <- parallel_setup$parallel
+  } else {
+    parallel <- FALSE
   }
 
   if (method == "analytical") {
@@ -184,7 +180,7 @@ evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
     score_data <- data[names(cutoff_ranges)]
 
     # Use simple vectorized loops for maximum speed in R
-    results_list <- purrr::map(1:nrow(cutoff_combinations), function(i) {
+    results_list <- purrr::map(seq_len(nrow(cutoff_combinations)), function(i) {
       combo <- cutoff_combinations[i, ]
 
       # Vectorized binary decision for the entire dataset
@@ -221,13 +217,12 @@ evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
     return(dplyr::bind_rows(results_list))
   }
 
-  eval_fun <- if (parallel) furrr::future_map_dfr else purrr::map_dfr
-
-  results <- eval_fun(
-    1:nrow(cutoff_combinations),
-    ~ evaluate_single_combination(.x, cutoff_combinations, data, config, target_default_rate, min_approval_rate, method),
+  results <- .parallel_map_dfr(
+    .x = seq_len(nrow(cutoff_combinations)),
+    .f = ~ evaluate_single_combination(.x, cutoff_combinations, data, config, target_default_rate, min_approval_rate, method),
+    .parallel = parallel,
     .progress = TRUE,
-    .options = if (parallel) furrr::furrr_options(seed = TRUE) else NULL
+    .options = furrr::furrr_options(seed = TRUE)
   )
 
   return(results)

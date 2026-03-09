@@ -14,7 +14,8 @@ find_risk_groups(
   bins = 20,
   oot_date = NULL,
   max_groups = NULL,
-  quiet = FALSE
+  quiet = FALSE,
+  ...
 )
 }
 \arguments{
@@ -37,6 +38,8 @@ find_risk_groups(
 \item{max_groups}{An optional integer specifying the maximum number of risk groups to return. If NULL, pruning is driven solely by volume and stability thresholds.}
 
 \item{quiet}{Whether to suppress progress and status messages. Default is FALSE.}
+
+\item{...}{Additional options passed to internal functions (e.g., \code{parallel = TRUE}, \code{n_workers = 4}).}
 }
 \value{
 A list containing:

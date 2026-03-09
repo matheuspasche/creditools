@@ -24,10 +24,18 @@ if (any(vapply(test_results, function(x) sum(vapply(x, inherits, logical(1), "ex
     cli_alert_success("All tests passed.")
 }
 
-# 3. Synchronize README
-cli_h2("3. Rendering README.Rmd to README.md")
+# 3. Synchronize README & Vignettes
+cli_h2("3. Synchronizing Documentation (README & Vignettes)")
 rmarkdown::render("README.Rmd", output_format = "github_document", quiet = TRUE)
 cli_alert_success("README synchronized.")
+
+# Render vignettes
+vignette_files <- list.files("vignettes", pattern = "\\.Rmd$", full.names = TRUE)
+purrr::walk(vignette_files, ~ {
+    cli_alert_info("Rendering vignette: {.file {.x}}")
+    rmarkdown::render(.x, quiet = TRUE)
+})
+cli_alert_success("All vignettes rendered.")
 
 # 4. Extra Sanitation Checks (T/F usage, browser, non-ASCII)
 cli_h2("4. Running Static Sanitation Checks")

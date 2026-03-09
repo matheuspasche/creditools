@@ -17,6 +17,7 @@
 #' @param oot_date An optional cutoff Date/POSIXt object. Data where `time_col >= oot_date` will be preserved exclusively for Out-Of-Time (OOT) validation reporting.
 #' @param max_groups An optional integer specifying the maximum number of risk groups to return. If NULL, pruning is driven solely by volume and stability thresholds.
 #' @param quiet Whether to suppress progress and status messages. Default is FALSE.
+#' @param ... Additional options passed to internal functions (e.g., `parallel = TRUE`, `n_workers = 4`).
 #'
 #' @return A list containing:
 #'   - `$data`: The original data frame with a new column `final_risk_group` attached to each row.
@@ -54,7 +55,8 @@ find_risk_groups <- function(data,
                              bins = 20,
                              oot_date = NULL,
                              max_groups = NULL,
-                             quiet = FALSE) {
+                             quiet = FALSE,
+                             ...) {
 
     # Basic Validation
     missing_cols <- setdiff(c(score_cols, default_col, time_col), names(data))
@@ -69,7 +71,11 @@ find_risk_groups <- function(data,
         }
     }
 
-    # 1. Spilt Train & OOT
+    # Handle Parallelism Setup
+    parallel_setup <- .setup_parallel(...)
+    parallel <- parallel_setup$parallel
+
+    # 1. Split Train & OOT
     if (!is.null(oot_date) && !is.null(time_col)) {
         if (!inherits(oot_date, c("Date", "POSIXt"))) {
             cli::cli_abort("{.arg oot_date} must be a Date or POSIXt object.")
@@ -132,6 +138,8 @@ find_risk_groups <- function(data,
     }
 
     # --- AGGLOMERATIVE CLUSTERING OPTIMIZATION LOOP ---
+    if (!quiet) cli::cli_alert_info("Optimizing risk clusters (Ward Distance + Stability)...")
+
     converged <- FALSE
     while (!converged) {
         group_bads_vols <- current_groups %>%
@@ -166,10 +174,13 @@ find_risk_groups <- function(data,
 
         g_ids <- group_summary$group_id
 
+        # NOTE: Benchmarks showed that parallelizing this inner loop
+        # (furrr::future_map) is counter-productive due to overhead of small tasks.
+        # Keeping it sequential for maximum efficiency in single-run clustering.
         min_cost <- Inf
         best_pair <- NULL
 
-        for (i in 1:(n_groups - 1)) {
+        for (i in seq_len(n_groups - 1)) {
             g1 <- g_ids[i]
             g2 <- g_ids[i + 1]
 
@@ -181,7 +192,6 @@ find_risk_groups <- function(data,
 
             # Ward Distance
             delta <- (v1 * v2) / (v1 + v2) * (pd1 - pd2)^2
-
             cost <- delta
 
             # Priority 1: Monotonicity (Inversion / Flat)
@@ -197,13 +207,9 @@ find_risk_groups <- function(data,
                 col1 <- as.character(g1)
                 col2 <- as.character(g2)
 
-                if (col1 %in% names(current_monthly) && col2 %in% names(current_monthly)) {
+                if (!is.null(current_monthly) && col1 %in% names(current_monthly) && col2 %in% names(current_monthly)) {
                     valid_idx <- !is.na(current_monthly[[col1]]) & !is.na(current_monthly[[col2]])
                     if (sum(valid_idx) > 0) {
-                        # Count absolute number of periods where lower-risk group
-                        # has PD >= higher-risk group (crossing). Using absolute
-                        # count instead of proportion makes this robust to small
-                        # vintage windows (6-18 months common in credit analysis).
                         n_crossings <- sum(current_monthly[[col1]][valid_idx] >= current_monthly[[col2]][valid_idx])
                         if (n_crossings > max_crossings) {
                             if (cost > -1e3) cost <- -1e3 + delta
@@ -227,9 +233,8 @@ find_risk_groups <- function(data,
             # Constraints satisfied
             # Priority 4: Max Groups Tail Compression
             if (!is.null(max_groups) && n_groups > max_groups) {
-                # Merge the pair with the smallest information loss (Ward Distance)
                 current_groups <- current_groups %>%
-                    dplyr::mutate(group_id = ifelse(group_id == best_pair[2], best_pair[1], group_id))
+                    dplyr::mutate(group_id = ifelse(group_id == best_pair[1] | group_id == best_pair[2], min(best_pair), group_id))
                 current_groups$group_id <- as.integer(as.factor(current_groups$group_id))
             } else {
                 converged <- TRUE
@@ -248,11 +253,10 @@ find_risk_groups <- function(data,
     # Function to apply the mappings safely to any dataset
     apply_ratings <- function(df) {
         # Bin scores according to provided parameters
+        # (Internal ntile is vectorized across rows but we do have multiple scores)
         for (i in seq_along(score_cols)) {
             sc <- score_cols[i]
             bc <- bin_cols[i]
-            # For unseen OOT data, we recalculate tiles locally or could map them rigidly.
-            # Here we bin OOT locally in its own context to preserve dynamic separation.
             df[[bc]] <- dplyr::ntile(df[[sc]], bins)
         }
 
@@ -265,7 +269,9 @@ find_risk_groups <- function(data,
         return(df)
     }
 
-    train_data <- apply_ratings(train_data %>% dplyr::select(-dplyr::any_of(c(bin_cols, "micro_rating"))))
+    train_data <- apply_ratings(
+        train_data %>% dplyr::select(-dplyr::any_of(c(bin_cols, "micro_rating")))
+    )
 
     if (nrow(oot_data) > 0) {
         oot_data <- apply_ratings(oot_data)
@@ -326,7 +332,7 @@ find_risk_groups <- function(data,
 #' @param default_col A character string with the column name indicating the observed default (0 or 1).
 #' @param time_col A character string with the column name representing the vintage/time cohort.
 #' @param quiet Whether to suppress progress and status messages. Default is FALSE.
-#' @param ... Additional arguments passed natively to `find_risk_groups()`.
+#' @param ... Additional arguments passed natively to `find_risk_groups()` (e.g., `parallel = TRUE`).
 #'
 #' @return A named list where each element contains the clustered Output List from `find_risk_groups` tied to a specific Challenger.
 #' @export
@@ -346,41 +352,46 @@ find_pairwise_risk_groups <- function(data,
                                       challenger_scores,
                                       default_col,
                                       time_col,
-                                      ...,
-                                      quiet = FALSE) {
+                                      quiet = FALSE,
+                                      ...) {
     if (!quiet && requireNamespace("cli", quietly = TRUE)) {
         cli::cli_alert_info("Starting pairwise Risk Group search for 1 Primary vs {length(challenger_scores)} Challengers...")
-        pb <- try(cli::cli_progress_bar("Matrixing scores...", total = length(challenger_scores)), silent = TRUE)
     }
 
-    results <- list()
+    # Handle Parallelism Setup
+    parallel_setup <- .setup_parallel(...)
+    parallel <- parallel_setup$parallel
 
-    for (challenger in challenger_scores) {
-        if (!quiet && requireNamespace("cli", quietly = TRUE)) {
-            cli::cli_alert_info("Matrixing: {primary_score} x {challenger}")
-            if (exists("pb") && !inherits(pb, "try-error")) {
-                try(cli::cli_progress_update(id = pb, status = paste("Matrixing:", primary_score, "x", challenger)), silent = TRUE)
+    # Capture dots for passing to find_risk_groups
+    extra_args <- list(...)
+
+    results_list <- .parallel_map(
+        .x = challenger_scores,
+        .f = function(challenger) {
+            if (!quiet && requireNamespace("cli", quietly = TRUE)) {
+                cli::cli_alert_info("Matrixing: {primary_score} x {challenger}")
             }
-        }
+            # Prevent nested parallelism by forcing parallel = FALSE in the inner call
+            inner_args <- utils::modifyList(extra_args, list(parallel = FALSE))
+            res <- do.call(find_risk_groups, c(list(
+                data = data,
+                score_cols = c(primary_score, challenger),
+                default_col = default_col,
+                time_col = time_col,
+                quiet = quiet
+            ), inner_args))
+            return(list(challenger = challenger, result = res))
+        },
+        .parallel = parallel,
+        .progress = !quiet,
+        # Don't pass furrr_options directly in the argument evaluation
+        .options = list(globals = TRUE, packages = c("creditools", "dplyr"))
+    )
 
-        res <- find_risk_groups(
-            data = data,
-            score_cols = c(primary_score, challenger),
-            default_col = default_col,
-            time_col = time_col,
-            quiet = quiet,
-            ...
-        )
-
-        results[[paste0(primary_score, "_vs_", challenger)]] <- res
-
-        if (!quiet && exists("pb") && !inherits(pb, "try-error")) {
-            try(cli::cli_progress_update(id = pb), silent = TRUE)
-        }
-    }
-
-    if (!quiet && exists("pb") && !inherits(pb, "try-error")) {
-        try(cli::cli_progress_done(id = pb), silent = TRUE)
+    # Reconstruct named list
+    results <- list()
+    for (item in results_list) {
+        results[[paste0(primary_score, "_vs_", item$challenger)]] <- item$result
     }
 
     return(results)

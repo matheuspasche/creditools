@@ -81,8 +81,8 @@ run_simulation <- function(data,
     if (length(stage_approval_cols) == 0) {
       data$new_approval <- rep(1L, nrow(data))
     } else {
-      # Use pass_prob_funnel directly for stochastic as well if it's already binary in that mode
-      # But to be safe and consistent with previous logic:
+      # Determined final approval status under the new policy
+      # Mapping across stage columns to check for cumulative approval
       final_approval_flags <- purrr::map(data[unlist(stage_approval_cols)], function(col) col == 1 & !is.na(col))
       data$new_approval <- as.integer(Reduce(`&`, final_approval_flags))
     }
@@ -321,7 +321,8 @@ simulate_swap_in_defaults <- function(data, policy, method = c("stochastic", "an
   }
 
   # Calculate probability for each stress scenario
-  prob_matrix <- purrr::map_dfc(seq_along(policy$stress_scenarios), function(seq_idx) {
+  # Internal loops are sequential to avoid serialization overhead in nested simulations
+  prob_list <- purrr::map(seq_along(policy$stress_scenarios), function(seq_idx) {
     scenario <- policy$stress_scenarios[[seq_idx]]
     res <- switch(scenario$type,
       "aggravation" = calc_prob_aggravation(data, policy, scenario),
@@ -332,6 +333,7 @@ simulate_swap_in_defaults <- function(data, policy, method = c("stochastic", "an
     col_name <- paste0("prob_", seq_idx)
     tibble::tibble(!!col_name := res)
   })
+  prob_matrix <- dplyr::bind_cols(prob_list)
 
   # Aggregate probabilities across scenarios
   # For now, we take the maximum probability as a conservative estimate

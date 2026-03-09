@@ -11,8 +11,7 @@ find_optimal_cutoffs(
   target_default_rate = 0.05,
   min_approval_rate = 0.3,
   method = c("stochastic", "analytical"),
-  parallel = FALSE,
-  n_cores = NULL
+  ...
 )
 }
 \arguments{
@@ -31,10 +30,9 @@ The range is from the min to the max score in the data.}
 \item{method}{The simulation method: \code{"stochastic"} (default) for row-by-row sampling
 or \code{"analytical"} for expected value calculation (reweighting).}
 
-\item{parallel}{A logical flag indicating whether to use parallel processing.}
-
-\item{n_cores}{The number of CPU cores to use for parallel processing. Defaults to
-all available cores minus one.}
+\item{...}{Additional arguments passed to the simulation function, such as
+\code{parallel} (logical, whether to use parallel processing) and \code{n_workers}
+(integer, number of parallel workers if \code{parallel = TRUE}).}
 }
 \value{
 A data frame with the single best combination of cutoffs found, along

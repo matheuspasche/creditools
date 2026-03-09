@@ -4,7 +4,7 @@
 \alias{calc_prob_aggravation}
 \title{Calculate stressed default probability via aggravation factor}
 \usage{
-calc_prob_aggravation(data, policy, scenario)
+calc_prob_aggravation(data, policy, scenario_obj)
 }
 \description{
 Calculate stressed default probability via aggravation factor
