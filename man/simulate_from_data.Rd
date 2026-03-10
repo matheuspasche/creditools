@@ -66,3 +66,20 @@ It expects a flat data frame where real-world operational
 outcomes (like approved vs rejected, hired vs not, and
 defaulted vs paid) are already present historically.
 }
+\examples{
+# High-level wrapper for credit analysts
+data <- generate_sample_data(n_applicants = 1000)
+results <- simulate_from_data(
+    data = data,
+    current_score_col = "old_score", # Match generate_sample_data
+    new_score_col = "new_score",
+    new_score_cutoff = 600,
+    aggravation_factor = 1.3
+)
+
+# View the scenario summary
+print(results$summary)
+
+# Plot the results
+plot(results)
+}

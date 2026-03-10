@@ -23,6 +23,29 @@ existing_warnings$warned_no_stress <- FALSE
 #' @family simulation
 #' @export
 #'
+#' @examples
+#' # 1. Prepare sample data
+#' data <- generate_sample_data(n_applicants = 1000)
+#'
+#' # 2. Define a multi-stage credit policy
+#' policy <- credit_policy(
+#'   applicant_id_col = "id",
+#'   score_cols = c("old_score", "new_score"),
+#'   current_approval_col = "approved",
+#'   actual_default_col = "defaulted",
+#'   simulation_stages = list(
+#'     # New policy requires passing a score cutoff AND a conversion stage
+#'     stage_cutoff(name = "credit_check", cutoffs = list(new_score = 650)),
+#'     stage_rate(name = "conversion", base_rate = 0.5)
+#'   )
+#' )
+#'
+#' # 3. Run the simulation
+#' results <- run_simulation(data, policy)
+#'
+#' # 4. Summarize and view results
+#' summary <- summarize_results(results)
+#' print(summary)
 run_simulation <- function(data,
                            policy,
                            method = c("stochastic", "analytical"),
@@ -128,6 +151,15 @@ run_simulation <- function(data,
 #' @return A numeric or integer vector of simulated stage outcomes.
 #' @keywords internal
 #' @export
+#' @export
+#' @examples
+#' # Generic function typically used internally within run_simulation().
+#' # It dispatches to specific methods like simulate_stage.stage_cutoff().
+#' data <- generate_sample_data(n_applicants = 100)
+#' stage <- stage_cutoff(name = "test", cutoffs = list(new_score = 600))
+#' policy <- credit_policy("id", "new_score", "approved", "defaulted")
+#' results <- simulate_stage(data, stage, policy)
+#' head(results)
 simulate_stage <- function(data, stage, policy, method = c("stochastic", "analytical")) {
   UseMethod("simulate_stage", stage)
 }

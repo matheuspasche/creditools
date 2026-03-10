@@ -35,6 +35,22 @@
 #' @return A list containing the resulting metrics, the generated risk groups, and the appended dataset.
 #' @export
 #'
+#' @examples
+#' # High-level wrapper for credit analysts
+#' data <- generate_sample_data(n_applicants = 1000)
+#' results <- simulate_from_data(
+#'     data = data,
+#'     current_score_col = "old_score", # Match generate_sample_data
+#'     new_score_col = "new_score",
+#'     new_score_cutoff = 600,
+#'     aggravation_factor = 1.3
+#' )
+#'
+#' # View the scenario summary
+#' print(results$summary)
+#'
+#' # Plot the results
+#' plot(results)
 simulate_from_data <- function(data,
                                applicant_id_col = "id",
                                current_score_col = "current_score",
