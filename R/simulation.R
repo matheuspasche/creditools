@@ -81,8 +81,8 @@ run_simulation <- function(data,
     if (length(stage_approval_cols) == 0) {
       data$new_approval <- rep(1L, nrow(data))
     } else {
-      # Use pass_prob_funnel directly for stochastic as well if it's already binary in that mode
-      # But to be safe and consistent with previous logic:
+      # Determined final approval status under the new policy
+      # Mapping across stage columns to check for cumulative approval
       final_approval_flags <- purrr::map(data[unlist(stage_approval_cols)], function(col) col == 1 & !is.na(col))
       data$new_approval <- as.integer(Reduce(`&`, final_approval_flags))
     }
@@ -308,20 +308,35 @@ simulate_swap_in_defaults <- function(data, policy, method = c("stochastic", "an
   if (length(policy$stress_scenarios) == 0) {
     if (!isTRUE(existing_warnings$warned_no_stress) && !quiet) {
       if (requireNamespace("cli", quietly = TRUE)) {
-        cli::cli_alert_warning("No stress scenarios defined for swap-in defaults. Default outcomes will be NA.")
+        cli::cli_alert_info("No {.field stress_scenarios} defined in {.arg credit_policy}. Applying neutral stress (1.0x) to 'swap-in' applicants.")
       }
       existing_warnings$warned_no_stress <- TRUE
     }
-    res_df <- tibble::tibble(
-      tmp_id = swap_ins[[policy$applicant_id_col]],
-      swap_in_default = NA_real_
-    )
+    # Create a dummy "neutral" scenario (1.0x aggravation)
+    # We use the risk_rating if available, otherwise global.
+    neutral_scenario <- list(type = "aggravation", factor = 1.0, by = "risk_rating")
+    if (!"risk_rating" %in% names(data)) neutral_scenario$by <- NULL
+
+    res_probs <- calc_prob_aggravation(data, policy, neutral_scenario)
+
+    if (method == "stochastic") {
+      res_df <- tibble::tibble(
+        tmp_id = swap_ins[[policy$applicant_id_col]],
+        swap_in_default = as.integer(stats::runif(nrow(swap_ins)) < res_probs)
+      )
+    } else {
+      res_df <- tibble::tibble(
+        tmp_id = swap_ins[[policy$applicant_id_col]],
+        swap_in_default = res_probs
+      )
+    }
     colnames(res_df)[1] <- policy$applicant_id_col
     return(res_df)
   }
 
   # Calculate probability for each stress scenario
-  prob_matrix <- purrr::map_dfc(seq_along(policy$stress_scenarios), function(seq_idx) {
+  # Internal loops are sequential to avoid serialization overhead in nested simulations
+  prob_list <- purrr::map(seq_along(policy$stress_scenarios), function(seq_idx) {
     scenario <- policy$stress_scenarios[[seq_idx]]
     res <- switch(scenario$type,
       "aggravation" = calc_prob_aggravation(data, policy, scenario),
@@ -332,6 +347,7 @@ simulate_swap_in_defaults <- function(data, policy, method = c("stochastic", "an
     col_name <- paste0("prob_", seq_idx)
     tibble::tibble(!!col_name := res)
   })
+  prob_matrix <- dplyr::bind_cols(prob_list)
 
   # Aggregate probabilities across scenarios
   # For now, we take the maximum probability as a conservative estimate
@@ -377,7 +393,7 @@ calc_prob_aggravation <- function(data, policy, scenario_obj) {
     res <- swap_ins %>%
       dplyr::left_join(historical_pds, by = by_col) %>%
       dplyr::mutate(stressed_pd = pmin(.data$hist_pd * factor_val, 1)) %>%
-      dplyr::pull(.data$stressed_pd)
+      dplyr::pull("stressed_pd")
 
     # Fill NAs with global historical PD
     global_pd <- mean(data[[policy$actual_default_col]][data[[policy$current_approval_col]] == 1], na.rm = TRUE)

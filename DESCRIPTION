@@ -1,6 +1,6 @@
 Package: creditools
 Title: Credit Risk Simulation and Trade-Off Analysis
-Version: 0.4.1
+Version: 0.4.2
 Authors@R: 
     person("Matheus", "Pasche", email = "matheuspasche@outlook.com", role = c("aut", "cre", "cph"))
 Description: Perform forward-looking credit risk analysis and policy
@@ -34,6 +34,7 @@ Imports:
     magrittr (>= 2.0.0),
     ggplot2 (>= 3.3.0),
     furrr (>= 0.3.0),
+    tidyselect (>= 1.2.0),
     utils (>= 4.0.0)
 Suggests:
     devtools,

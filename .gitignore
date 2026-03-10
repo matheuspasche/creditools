@@ -10,8 +10,11 @@ Rplots.pdf
 *.xlsx
 *.html
 *.csv
-*.png
+# *.png  # Allow PNGs for documentation
 *.pdf
+
+!man/figures/*.png
+!vignettes/*.png
 
 # Ignore analysis outputs
 /analysis/

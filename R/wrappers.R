@@ -81,7 +81,7 @@ simulate_from_data <- function(data,
 
     conversion_rates <- data %>%
         dplyr::filter(!!rlang::sym(historical_approval_col) == 1) %>%
-        dplyr::group_by(.data$score_tier) %>%
+        dplyr::group_by(score_tier) %>%
         dplyr::summarise(implied_conversion = mean(!!rlang::sym(historical_hired_col), na.rm = TRUE), .groups = "drop")
 
     # Attach conversion rates for projection
@@ -103,7 +103,7 @@ simulate_from_data <- function(data,
 
     # Create the target subset for clustering
     # In analytical mode, new_approval is a probability, so we take anyone with p > 0
-    approved_data <- data %>% dplyr::filter(.data$new_approval > 0)
+    approved_data <- data %>% dplyr::filter(new_approval > 0)
 
     rg <- find_risk_groups(
         data = approved_data,

@@ -130,8 +130,9 @@ summarize_results <- function(results, by = NULL) {
 #' business and risk levers simultaneously.
 #'
 #' Parallel processing is supported via the `furrr` package. If `parallel` is
-#' `TRUE`, the user must configure their parallel plan beforehand (e.g.,
-#' using `future::plan(future::multisession)`).
+#' `TRUE` and the current `future` plan is sequential, it will automatically
+#' set up a `multisession` plan. If a non-sequential plan is already active,
+#' it will be respected.
 #'
 #' @param data A data frame containing the analytical base table.
 #' @param base_policy A `credit_policy` object that serves as the template for
@@ -139,9 +140,12 @@ summarize_results <- function(results, by = NULL) {
 #' @param vary_params A named list of parameters to vary. The function will create
 #'   a grid of all combinations of these parameters. For example:
 #'   `list(new_score_cutoff = seq(500, 600, 10), aggravation_factor = c(1.2, 1.5))`
-#' @param parallel A logical flag. If `TRUE`, the simulation runs in parallel
-#'   using `furrr`. Defaults to `FALSE`.
 #' @param quiet Whether to suppress progress and status messages. Default is FALSE.
+#' @param ... Additional arguments passed to internal helper functions. These can
+#'   include `parallel` (logical, whether to run in parallel using `furrr`,
+#'   defaults to `FALSE`) and `n_workers` (optional integer, number of parallel
+#'   workers to use if `parallel = TRUE` and no plan is active, defaults to
+#'   `future::availableCores() - 1`).
 #'
 #' @return A tibble with the results of all simulation runs, including columns for
 #'   the varied parameters in `vary_params`, plus `approval_rate` and `default_rate`.
@@ -168,14 +172,18 @@ summarize_results <- function(results, by = NULL) {
 run_tradeoff_analysis <- function(data,
                                   base_policy,
                                   vary_params,
-                                  parallel = FALSE,
-                                  quiet = FALSE) {
+                                  quiet = FALSE,
+                                  ...) {
   if (!inherits(base_policy, "credit_policy")) {
     cli::cli_abort("{.arg base_policy} must be a {.cls credit_policy} object.")
   }
   if (!is.list(vary_params) || is.null(names(vary_params)) || length(vary_params) == 0) {
     cli::cli_abort("{.arg vary_params} must be a non-empty named list.")
   }
+
+  # --- Handle Parallelism Setup ---
+  parallel_setup <- .setup_parallel(...)
+  parallel <- parallel_setup$parallel
 
   # Create a grid of all combinations to test
   params_grid <- tidyr::expand_grid(!!!vary_params)
@@ -236,7 +244,7 @@ run_tradeoff_analysis <- function(data,
     )
 
     final_data <- sim_results$data
-    approved_pop <- final_data %>% dplyr::filter(.data$new_approval == TRUE)
+    approved_pop <- final_data %>% dplyr::filter(new_approval == TRUE)
 
     overall_approval_rate <- if (nrow(final_data) > 0) nrow(approved_pop) / nrow(final_data) else 0
     avg_default_rate_approved <- if (nrow(approved_pop) > 0) {
@@ -253,20 +261,13 @@ run_tradeoff_analysis <- function(data,
     return(result_row)
   }
 
-  simulation_outputs <- if (parallel) {
-    furrr::future_pmap_dfr(
-      .l = params_grid,
-      .f = run_single_sim,
-      .progress = !quiet,
-      .options = furrr::furrr_options(globals = TRUE, packages = c("creditools", "dplyr"))
-    )
-  } else {
-    purrr::pmap_dfr(
-      .l = params_grid,
-      .f = run_single_sim,
-      .progress = !quiet
-    )
-  }
+  simulation_outputs <- .parallel_pmap_dfr(
+    .l = params_grid,
+    .f = run_single_sim,
+    .parallel = parallel,
+    .progress = !quiet,
+    .options = furrr::furrr_options(globals = TRUE, packages = c("creditools", "dplyr"))
+  )
 
   if (!quiet) cli::cli_alert_success("All simulations complete.")
 

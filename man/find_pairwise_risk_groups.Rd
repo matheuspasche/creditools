@@ -10,8 +10,8 @@ find_pairwise_risk_groups(
   challenger_scores,
   default_col,
   time_col,
-  ...,
-  quiet = FALSE
+  quiet = FALSE,
+  ...
 )
 }
 \arguments{
@@ -25,9 +25,9 @@ find_pairwise_risk_groups(
 
 \item{time_col}{A character string with the column name representing the vintage/time cohort.}
 
-\item{...}{Additional arguments passed natively to \code{find_risk_groups()}.}
-
 \item{quiet}{Whether to suppress progress and status messages. Default is FALSE.}
+
+\item{...}{Additional arguments passed natively to \code{find_risk_groups()} (e.g., \code{parallel = TRUE}).}
 }
 \value{
 A named list where each element contains the clustered Output List from \code{find_risk_groups} tied to a specific Challenger.

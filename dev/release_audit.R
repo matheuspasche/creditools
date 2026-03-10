@@ -24,10 +24,18 @@ if (any(vapply(test_results, function(x) sum(vapply(x, inherits, logical(1), "ex
     cli_alert_success("All tests passed.")
 }
 
-# 3. Synchronize README
-cli_h2("3. Rendering README.Rmd to README.md")
+# 3. Synchronize README & Vignettes
+cli_h2("3. Synchronizing Documentation (README & Vignettes)")
 rmarkdown::render("README.Rmd", output_format = "github_document", quiet = TRUE)
 cli_alert_success("README synchronized.")
+
+# Render vignettes
+vignette_files <- list.files("vignettes", pattern = "\\.Rmd$", full.names = TRUE)
+purrr::walk(vignette_files, ~ {
+    cli_alert_info("Rendering vignette: {.file {.x}}")
+    rmarkdown::render(.x, quiet = TRUE)
+})
+cli_alert_success("All vignettes rendered.")
 
 # 4. Extra Sanitation Checks (T/F usage, browser, non-ASCII)
 cli_h2("4. Running Static Sanitation Checks")
@@ -65,13 +73,22 @@ check_pattern("[^\x01-\x7f]", "WARNING: Non-ASCII characters found. Use unicode 
 
 # 5. Full R CMD check
 cli_h2("5. Running Full R CMD check (CRAN standards)")
-# error_on = 'warning' ensures we don't allow any warnings to pass.
-# vignettes = TRUE ensures all vignettes are built and checked.
-check_res <- devtools::check(error_on = "warning", vignettes = TRUE, quiet = TRUE)
+# error_on = 'never' allows the script to finish and show us everything.
+check_res <- devtools::check(error_on = "never", vignettes = TRUE, quiet = TRUE)
 
-if (length(check_res$errors) > 0 || length(check_res$warnings) > 0) {
+# Filter out environmental "noise" (known local-only issues)
+remaining_warnings <- check_res$warnings[!grepl("qpdf", check_res$warnings)]
+remaining_notes <- check_res$notes[!grepl("unable to verify current time", check_res$notes)]
+
+if (length(check_res$errors) > 0 || length(remaining_warnings) > 0 || length(remaining_notes) > 0) {
     cli_h1("Audit Failed: CRAN Compliance Issues Found")
     print(check_res)
 } else {
+    if (length(check_res$warnings) > 0) {
+        cli_alert_info("Note: Ignored environmental warnings (e.g., missing 'qpdf').")
+    }
+    if (length(check_res$notes) > 0) {
+        cli_alert_info("Note: Ignored local notes (e.g., time verification).")
+    }
     cli_h1("Audit Complete: Package is CRAN-Ready!")
 }
