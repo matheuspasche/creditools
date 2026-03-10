@@ -211,7 +211,7 @@ evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
         constraints_met = constraints_met,
         tradeoff_score = app_rate - (5 * def_rate)
       )
-      dplyr::bind_cols(res, tibble::as_tibble(combo %>% dplyr::select(-combination_id), .name_repair = "unique_quiet"))
+      dplyr::bind_cols(res, tibble::as_tibble(combo %>% dplyr::select(-dplyr::all_of("combination_id")), .name_repair = "unique_quiet"))
     }, .progress = TRUE)
 
     return(dplyr::bind_rows(results_list))
@@ -234,7 +234,7 @@ evaluate_single_combination <- function(combo_id, cutoff_combinations, data, con
                                         method = c("stochastic", "analytical")) {
   method <- match.arg(method)
   cutoffs <- cutoff_combinations[combo_id, ] %>%
-    dplyr::select(-combination_id) %>%
+    dplyr::select(-dplyr::all_of("combination_id")) %>%
     as.list()
 
   # Create a temporary policy for this run, adding a cutoff stage for this iteration.
@@ -327,7 +327,7 @@ find_optimal_results <- function(results, target_default_rate, min_approval_rate
     dplyr::filter(.data$constraints_met == TRUE)
 
   if (nrow(valid_results) == 0) {
-    cli::cli_alert_warning("No cutoff combinations met the specified constraints. Returning the best-effort result.")
+    cli::cli_alert_warning("No cutoff combinations satisfied the provided constraints. Returning the {.emph best-effort} result based on the tradeoff score.")
     # If no combination is valid, find the one with the highest tradeoff score among all results
     # This might be a high-risk or low-approval option, but it's the "best" found
     return(
@@ -362,7 +362,7 @@ analyze_tradeoffs <- function(opt_results) {
   params <- attr(opt_results, "optimization_params")
 
   overall_analysis <- results %>%
-    dplyr::select(.data$overall_approval_rate, .data$overall_default_rate, .data$tradeoff_score) %>%
+    dplyr::select(dplyr::all_of(c("overall_approval_rate", "overall_default_rate", "tradeoff_score"))) %>%
     dplyr::distinct() %>%
     dplyr::filter(!is.na(.data$overall_approval_rate) & !is.na(.data$overall_default_rate)) %>%
     dplyr::arrange(.data$overall_approval_rate, .data$overall_default_rate)
@@ -518,7 +518,7 @@ find_equivalent_policy <- function(tradeoff_results,
     dplyr::arrange(.data$diff)
 
   if (nrow(matches) == 0) {
-    cli::cli_alert_warning("No exact matches found within tolerance. Returning the single closest scenario.")
+    cli::cli_alert_warning("No exact matches found within the specified tolerance. Returning the single closest scenario.")
     return(
       results %>%
         dplyr::mutate(diff = abs(.data[[col_name]] - target_value)) %>%

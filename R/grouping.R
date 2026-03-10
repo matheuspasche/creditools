@@ -105,11 +105,11 @@ find_risk_groups <- function(data,
         dplyr::summarize(
             combo_vol = dplyr::n(),
             combo_bads = sum(!!rlang::sym(default_col), na.rm = TRUE),
-            empirical_pd = combo_bads / combo_vol,
+            empirical_pd = .data$combo_bads / .data$combo_vol,
             .groups = "drop"
         ) %>%
         # Sort from Lowest Risk to Highest Risk
-        dplyr::arrange(empirical_pd) %>%
+        dplyr::arrange(.data$empirical_pd) %>%
         # Assign an initial continuous 1D ranking
         dplyr::mutate(micro_rating = dplyr::row_number())
 
@@ -121,13 +121,13 @@ find_risk_groups <- function(data,
     total_vol <- nrow(train_data)
 
     current_groups <- matrix_summary %>%
-        dplyr::select(micro_rating, empirical_pd, combo_vol) %>%
-        dplyr::mutate(group_id = micro_rating)
+        dplyr::select(dplyr::all_of(c("micro_rating", "empirical_pd", "combo_vol"))) %>%
+        dplyr::mutate(group_id = .data$micro_rating)
 
     # Pre-calculate monthly PDs for stability checks (only if time_col provided)
     if (!is.null(time_col)) {
         monthly_stats <- train_data %>%
-            dplyr::group_by(micro_rating, !!rlang::sym(time_col)) %>%
+            dplyr::group_by(.data$micro_rating, !!rlang::sym(time_col)) %>%
             dplyr::summarize(
                 bads = sum(!!rlang::sym(default_col), na.rm = TRUE),
                 vols = dplyr::n(),
@@ -143,31 +143,31 @@ find_risk_groups <- function(data,
     converged <- FALSE
     while (!converged) {
         group_bads_vols <- current_groups %>%
-            dplyr::mutate(combo_bads = empirical_pd * combo_vol) %>%
-            dplyr::group_by(group_id) %>%
+            dplyr::mutate(combo_bads = .data$empirical_pd * .data$combo_vol) %>%
+            dplyr::group_by(.data$group_id) %>%
             dplyr::summarize(
-                vol = sum(combo_vol),
-                bads = sum(combo_bads),
-                pd = bads / vol,
+                vol = sum(.data$combo_vol),
+                bads = sum(.data$combo_bads),
+                pd = .data$bads / .data$vol,
                 .groups = "drop"
             ) %>%
-            dplyr::arrange(group_id)
+            dplyr::arrange(.data$group_id)
 
         group_summary <- group_bads_vols %>%
-            dplyr::mutate(vol_ratio = vol / total_vol, mean_pd = pd)
+            dplyr::mutate(vol_ratio = .data$vol / total_vol, mean_pd = .data$pd)
 
         n_groups <- nrow(group_summary)
         if (n_groups <= 1) break
 
         if (!is.null(monthly_stats)) {
             current_monthly <- monthly_stats %>%
-                dplyr::inner_join(current_groups %>% dplyr::select(.data$micro_rating, .data$group_id), by = "micro_rating") %>%
+                dplyr::inner_join(current_groups %>% dplyr::select(dplyr::all_of(c("micro_rating", "group_id"))), by = "micro_rating") %>%
                 dplyr::group_by(.data$group_id, !!rlang::sym(time_col)) %>%
                 dplyr::summarize(
                     pd = sum(.data$bads) / sum(.data$vols),
                     .groups = "drop"
                 ) %>%
-                tidyr::pivot_wider(names_from = .data$group_id, values_from = .data$pd)
+                tidyr::pivot_wider(names_from = tidyselect::all_of("group_id"), values_from = tidyselect::all_of("pd"))
         } else {
             current_monthly <- NULL
         }
@@ -227,14 +227,14 @@ find_risk_groups <- function(data,
         if (min_cost < 0) {
             # Constraint violated: Merge the pair with the most urgent penalty (and smallest delta)
             current_groups <- current_groups %>%
-                dplyr::mutate(group_id = ifelse(group_id == best_pair[2], best_pair[1], group_id))
+                dplyr::mutate(group_id = ifelse(.data$group_id == best_pair[2], best_pair[1], .data$group_id))
             current_groups$group_id <- as.integer(as.factor(current_groups$group_id))
         } else {
             # Constraints satisfied
             # Priority 4: Max Groups Tail Compression
             if (!is.null(max_groups) && n_groups > max_groups) {
                 current_groups <- current_groups %>%
-                    dplyr::mutate(group_id = ifelse(group_id == best_pair[1] | group_id == best_pair[2], min(best_pair), group_id))
+                    dplyr::mutate(group_id = ifelse(.data$group_id == best_pair[1] | .data$group_id == best_pair[2], min(best_pair), .data$group_id))
                 current_groups$group_id <- as.integer(as.factor(current_groups$group_id))
             } else {
                 converged <- TRUE
@@ -246,9 +246,9 @@ find_risk_groups <- function(data,
 
     # We have our finalized groups (Ratings)! Let's build a lookup dictionary mapping the initial N-Dimensional Bins to the Final Group.
     final_mapping <- matrix_summary %>%
-        dplyr::select(dplyr::all_of(bin_cols), micro_rating) %>%
-        dplyr::left_join(current_groups %>% dplyr::select(micro_rating, group_id), by = "micro_rating") %>%
-        dplyr::rename(risk_rating = group_id)
+        dplyr::select(dplyr::all_of(bin_cols), dplyr::all_of("micro_rating")) %>%
+        dplyr::left_join(current_groups %>% dplyr::select(dplyr::all_of(c("micro_rating", "group_id"))), by = "micro_rating") %>%
+        dplyr::rename(risk_rating = "group_id")
 
     # Function to apply the mappings safely to any dataset
     apply_ratings <- function(df) {
@@ -262,7 +262,7 @@ find_risk_groups <- function(data,
 
         # Left join the master lookup
         df <- df %>%
-            dplyr::left_join(final_mapping %>% dplyr::select(-micro_rating), by = bin_cols)
+            dplyr::left_join(final_mapping %>% dplyr::select(-"micro_rating"), by = bin_cols)
 
         # Clean up transient bin columns
         df <- df %>% dplyr::select(-dplyr::all_of(bin_cols))
@@ -283,11 +283,11 @@ find_risk_groups <- function(data,
     # Generate High-Level Summary Report
     summarize_group <- function(df, period_name) {
         df %>%
-            dplyr::group_by(risk_rating) %>%
+            dplyr::group_by(.data$risk_rating) %>%
             dplyr::summarize(
                 period = period_name,
                 total_vol = dplyr::n(),
-                avg_pd = sum(!!rlang::sym(default_col), na.rm = TRUE) / total_vol,
+                avg_pd = sum(!!rlang::sym(default_col), na.rm = TRUE) / .data$total_vol,
                 .groups = "drop"
             )
     }

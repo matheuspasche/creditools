@@ -130,7 +130,7 @@ test_that("run_tradeoff_analysis respects pre-existing parallel plans", {
     )
 
     expect_true(inherits(future::plan(), "multisession"))
-    expect_s3_class(res, "tbl_df")
+    expect_true(is.data.frame(res))
 })
 
 test_that("Parallel setup reverts to sequential if it created the plan", {

@@ -199,7 +199,7 @@ plot.credit_risk_groups <- function(x, ...) {
 
   p <- ggplot2::ggplot(
     plot_data,
-    ggplot2::aes(x = .data$time, y = .data$pd, color = factor(.data$risk_rating), group = .data$risk_rating)
+    ggplot2::aes(x = time, y = pd, color = factor(risk_rating), group = risk_rating)
   ) +
     ggplot2::geom_line(linewidth = 1) +
     ggplot2::geom_point(size = 2) +
@@ -257,10 +257,10 @@ plot.creditools_simulation_from_data <- function(x, ...) {
       scenario = factor(.data$scenario, levels = c("keep_in", "swap_in", "swap_out", "keep_out"))
     )
 
-  p <- ggplot2::ggplot(summary, ggplot2::aes(x = .data$scenario, y = .data$Hired, fill = .data$scenario)) +
+  p <- ggplot2::ggplot(summary, ggplot2::aes(x = scenario, y = Hired, fill = scenario)) +
     ggplot2::geom_col(alpha = 0.85) +
     ggplot2::geom_text(
-      ggplot2::aes(label = scales::percent(.data$Bad_Rate, accuracy = 0.01)),
+      ggplot2::aes(label = scales::percent(Bad_Rate, accuracy = 0.01)),
       vjust = -0.3,
       size = 3
     ) +

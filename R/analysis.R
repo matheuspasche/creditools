@@ -244,7 +244,7 @@ run_tradeoff_analysis <- function(data,
     )
 
     final_data <- sim_results$data
-    approved_pop <- final_data %>% dplyr::filter(.data$new_approval == TRUE)
+    approved_pop <- final_data %>% dplyr::filter(new_approval == TRUE)
 
     overall_approval_rate <- if (nrow(final_data) > 0) nrow(approved_pop) / nrow(final_data) else 0
     avg_default_rate_approved <- if (nrow(approved_pop) > 0) {
