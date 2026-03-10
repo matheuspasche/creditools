@@ -1,8 +1,7 @@
 # creditools 0.4.2
 
-*   **Parallel Processing Audit**: Rigorous audit of parallel processing capabilities. Standardized `n_workers` across all parallel functions for explicit user control.
-*   **Worker Control**: Updated `run_tradeoff_analysis`, `find_risk_groups`, and `evaluate_cutoff_combinations` to respect existing `future::plan()` and allow user-defined worker counts.
-*   **Dispatch Fix**: Fixed a crucial argument compatibility bug between `purrr` and `furrr` where parallel-only options were being passed to sequential map functions.
+*   **Tidyverse Best Practices**: Comprehensive standardization of selection (`select()`, `rename()`) and data-masking contexts across the package, resolving `tidyselect` deprecation warnings.
+*   **Simulation Logic**: Refined `simulate_swap_in_defaults()` to default to a neutral stress (1.0x multiplier) instead of `NA` when no stress scenarios are defined.
 *   **Documentation Assets**: Unblocked PNG files in `.gitignore` and `.Rbuildignore` to ensure README and vignette plots render correctly on GitHub.
 *   **Performance Optimization**: Identified that parallelizing the inner clustering loop of `find_risk_groups` was counterproductive due to overhead; reverted that specific loop to sequential while maintaining parallelism for higher-level operations.
 
