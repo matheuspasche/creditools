@@ -17,22 +17,25 @@
 #' @export
 #'
 #' @examples
-#' # sample_data <- generate_sample_data(n_applicants = 1000, seed = 42)
-#' # sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
-#' # my_policy <- credit_policy(
-#' #   applicant_id_col = "id",
-#' #   score_cols = c("old_score", "new_score"),
-#' #   current_approval_col = "approved",
-#' #   actual_default_col = "defaulted",
-#' #   risk_level_col = "new_score_decile",
-#' #   simulation_stages = list(
-#' #     stage_cutoff(name = "credit_score", cutoffs = list(new_score = 600))
-#' #   )
-#' # )
-#' # results <- run_simulation(data = sample_data, policy = my_policy)
-#' #
-#' # # Summarize results by scenario and risk decile
-#' # summarize_results(results, by = "new_score_decile")
+#' # 1. Prepare data and policy
+#' sample_data <- generate_sample_data(n_applicants = 1000, seed = 42)
+#' sample_data$new_score_decile <- dplyr::ntile(sample_data$new_score, 10)
+#' my_policy <- credit_policy(
+#'   applicant_id_col = "id",
+#'   score_cols = c("old_score", "new_score"),
+#'   current_approval_col = "approved",
+#'   actual_default_col = "defaulted",
+#'   risk_level_col = "new_score_decile",
+#'   simulation_stages = list(
+#'     stage_cutoff(name = "credit_score", cutoffs = list(new_score = 600))
+#'   )
+#' )
+#'
+#' # 2. Run simulation
+#' results <- run_simulation(data = sample_data, policy = my_policy)
+#'
+#' # 3. Summarize results by scenario and risk decile
+#' summarize_results(results, by = "new_score_decile")
 summarize_results <- function(results, by = NULL) {
   if (!inherits(results, "credit_sim_results")) {
     cli::cli_abort("{.arg results} must be a {.cls credit_sim_results} object from {.fn run_simulation}.")

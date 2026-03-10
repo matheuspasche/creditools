@@ -17,3 +17,7 @@ The original object \code{x}, invisibly.
 \description{
 Print method for credit_policy
 }
+\examples{
+policy <- credit_policy("id", "score", "app", "def")
+print(policy)
+}

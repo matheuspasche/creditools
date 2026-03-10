@@ -12,4 +12,13 @@ A numeric or integer vector of simulated stage outcomes.
 \description{
 Generic function to simulate a single stage
 }
+\examples{
+# Generic function typically used internally within run_simulation().
+# It dispatches to specific methods like simulate_stage.stage_cutoff().
+data <- generate_sample_data(n_applicants = 100)
+stage <- stage_cutoff(name = "test", cutoffs = list(new_score = 600))
+policy <- credit_policy("id", "new_score", "approved", "defaulted")
+results <- simulate_stage(data, stage, policy)
+head(results)
+}
 \keyword{internal}

@@ -250,6 +250,10 @@ validate_credit_policy <- function(policy) {
 #'
 #' @return The original object `x`, invisibly.
 #' @export
+#'
+#' @examples
+#' policy <- credit_policy("id", "score", "app", "def")
+#' print(policy)
 print.credit_policy <- function(x, ...) {
   cli::cli_rule("Credit Simulation Policy")
   cli::cli_bullets(c(

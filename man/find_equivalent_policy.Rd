@@ -28,3 +28,27 @@ Searches through multi-scenario results to find a policy that matches a
 specific target value for either approval rate or default rate. Useful for
 "iso-approval" or "iso-bad-rate" analyses.
 }
+\examples{
+\donttest{
+# 1. Run a tradeoff analysis
+data <- generate_sample_data(n_applicants = 1000)
+policy <- credit_policy(
+  applicant_id_col = "id",
+  score_cols = "new_score",
+  current_approval_col = "approved",
+  actual_default_col = "defaulted"
+)
+tradeoff_results <- run_tradeoff_analysis(
+  data = data,
+  base_policy = policy,
+  vary_params = list(new_score_cutoff = seq(500, 700, 50))
+)
+
+# 2. Find a policy that yields ~20\% approval rate
+find_equivalent_policy(
+  tradeoff_results,
+  target_metric = "approval_rate",
+  target_value = 0.20
+)
+}
+}
