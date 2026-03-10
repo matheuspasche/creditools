@@ -38,3 +38,7 @@ walkthrough.md
 # Handoff docs
 /doc/
 /Meta/
+
+# Local development and LLM tools
+dev/
+llm/
