@@ -39,11 +39,11 @@ The function generates a parameter grid from the named list provided in
 for each combination. The function intelligently modifies the policy based on
 the names of the parameters in \code{vary_params}:
 \itemize{
-\item A parameter named \verb{<score_name>_cutoff} will create or modify a
+\item A parameter named \var{score_name}_cutoff will create or modify a
 \code{stage_cutoff} for that score.
 \item A parameter named \code{aggravation_factor} will create or modify a
 \code{stress_aggravation} scenario.
-\item A parameter named \verb{<stage_name>_base_rate} will dynamically update the
+\item A parameter named \var{stage_name}_base_rate will dynamically update the
 \code{base_rate} of an existing \code{stage_rate} matching that name.
 }
 

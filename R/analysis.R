@@ -121,12 +121,12 @@ summarize_results <- function(results, by = NULL) {
 #' for each combination. The function intelligently modifies the policy based on
 #' the names of the parameters in `vary_params`:
 #'
-#' - A parameter named `<score_name>_cutoff` will create or modify a
-#'   `stage_cutoff` for that score.
+#' - A parameter named \var{score_name}_cutoff will create or modify a
+#'   \code{stage_cutoff} for that score.
 #' - A parameter named `aggravation_factor` will create or modify a
 #'   `stress_aggravation` scenario.
-#' - A parameter named `<stage_name>_base_rate` will dynamically update the
-#'   `base_rate` of an existing `stage_rate` matching that name.
+#' - A parameter named \var{stage_name}_base_rate will dynamically update the
+#'   \code{base_rate} of an existing \code{stage_rate} matching that name.
 #'
 #' This allows for complex sensitivity analyses (e.g., creating an "efficient
 #' frontier" between approval rate and default rate) by varying multiple

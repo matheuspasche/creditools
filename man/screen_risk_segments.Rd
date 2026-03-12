@@ -2,7 +2,7 @@
 % Please edit documentation in R/screening.R
 \name{screen_risk_segments}
 \alias{screen_risk_segments}
-\title{High-Scale Risk Segmentation Screening ("Furar a Folhinha")}
+\title{High-Scale Risk Segmentation Screening (Furar a Folhinha)}
 \usage{
 screen_risk_segments(
   data,
@@ -23,7 +23,7 @@ screen_risk_segments(
 
 \item{base_risk_col}{Character. The name of the existing risk group/rating column.}
 
-\item{candidate_cols}{<\code{\link[tidyselect:language]{tidy-select}}> Columns to test for segmentation power.}
+\item{candidate_cols}{Columns to test for segmentation power. (Uses \code{tidyselect} syntax).}
 
 \item{default_col}{Character. The binary target column name (e.g., 0/1).}
 
@@ -44,9 +44,9 @@ screen_risk_segments(
 \value{
 An object of class \code{credit_risk_screening}, which is a list containing:
 \itemize{
-\item \verb{$metrics}: A long-format tibble reporting segmentation power (IV, PD Spread) for each variable/tier.
-\item \verb{$recipes}: A nested list of quantile boundaries and cluster mappings, enabling \code{predict()}.
-\item \verb{$metadata}: Internal parameters used during screening.
+\item \code{metrics}: A long-format tibble reporting segmentation power (IV, PD Spread) for each variable/tier.
+\item \code{recipes}: A nested list of quantile boundaries and cluster mappings, enabling \code{predict()}.
+\item \code{metadata}: Internal parameters used during screening.
 }
 }
 \description{
@@ -56,7 +56,7 @@ for high scalability, allowing the analysis of thousands of candidate variables
 against a baseline grouping.
 }
 \details{
-\subsection{High-Scale Screening ("Furar a Folhinha")}{
+\subsection{High-Scale Screening (Furar a Folhinha)}{
 
 This function identifies which variables can most effectively "break" or further refine
 existing risk groups. It is particularly useful for finding sub-segments (e.g., Rating 3.1, 3.2)

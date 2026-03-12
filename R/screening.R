@@ -1,4 +1,4 @@
-#' High-Scale Risk Segmentation Screening ("Furar a Folhinha")
+#' High-Scale Risk Segmentation Screening (Furar a Folhinha)
 #'
 #' @description
 #' `screen_risk_segments()` identifying candidate variables that can further segment
@@ -7,7 +7,7 @@
 #' against a baseline grouping.
 #'
 #' @details
-#' ### High-Scale Screening ("Furar a Folhinha")
+#' ### High-Scale Screening (Furar a Folhinha)
 #' This function identifies which variables can most effectively "break" or further refine
 #' existing risk groups. It is particularly useful for finding sub-segments (e.g., Rating 3.1, 3.2)
 #' that have significantly different default behaviors.
@@ -20,7 +20,7 @@
 #'
 #' @param data A data frame containing the historical data.
 #' @param base_risk_col Character. The name of the existing risk group/rating column.
-#' @param candidate_cols <[`tidy-select`][tidyselect::language]> Columns to test for segmentation power.
+#' @param candidate_cols Columns to test for segmentation power. (Uses \code{tidyselect} syntax).
 #' @param default_col Character. The binary target column name (e.g., 0/1).
 #' @param n_bins Integer. Number of quantiles to use for discretizing candidate variables. Default is 10.
 #' @param method Character. The segmentation method: `"quantiles"` (default), `"ward"`, or `"iv"`.
@@ -30,10 +30,12 @@
 #' @param .progress Logical. Whether to show a progress bar. Default is `FALSE`.
 #' @param ... Additional arguments passed to internal functions (e.g., `lambda_cross`, `lambda_vol`).
 #'
-#' @return An object of class `credit_risk_screening`, which is a list containing:
-#'   - `$metrics`: A long-format tibble reporting segmentation power (IV, PD Spread) for each variable/tier.
-#'   - `$recipes`: A nested list of quantile boundaries and cluster mappings, enabling `predict()`.
-#'   - `$metadata`: Internal parameters used during screening.
+#' @return An object of class \code{credit_risk_screening}, which is a list containing:
+#' \itemize{
+#'   \item \code{metrics}: A long-format tibble reporting segmentation power (IV, PD Spread) for each variable/tier.
+#'   \item \code{recipes}: A nested list of quantile boundaries and cluster mappings, enabling \code{predict()}.
+#'   \item \code{metadata}: Internal parameters used during screening.
+#' }
 #'
 #' @importFrom dplyr group_by summarise mutate n arrange ntile across all_of filter bind_rows select
 #' @importFrom rlang sym .data

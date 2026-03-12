@@ -35,12 +35,14 @@
 #' @param lambda_vol Penalty weight for PD volatility over time (only used if `optimization_method = "iv"`). Default is 0.2.
 #' @param ... Additional options passed to internal functions (e.g., `parallel = TRUE`, `n_workers = 4`).
 #'
-#' @return An object of class `credit_risk_groups`, which is a list containing:
-#'   - `$data`: The original data frame with a new column `risk_rating` attached.
-#'   - `$mapping`: A lookup table defining the boundaries of the final merged risk groups.
-#'   - `$recipes`: A list of quantile boundaries for each score used, enabling `predict()`.
-#'   - `$report`: A summary tibble validating the monotonicity and volume of the final hierarchy in BOTH train and OOT periods.
-#'   - `$metadata`: Internal parameters used during training.
+#' @return An object of class \code{credit_risk_groups}, which is a list containing:
+#' \itemize{
+#'   \item \code{data}: The original data frame with a new column \code{risk_rating} attached.
+#'   \item \code{mapping}: A lookup table defining the boundaries of the final merged risk groups.
+#'   \item \code{recipes}: A list of quantile boundaries for each score used, enabling \code{predict()}.
+#'   \item \code{report}: A summary tibble validating the monotonicity and volume of the final hierarchy in BOTH train and OOT periods.
+#'   \item \code{metadata}: Internal parameters used during training.
+#' }
 #'
 #' @importFrom dplyr mutate filter group_by summarize arrange ntile bind_rows left_join n pull select everything
 #' @importFrom stats setNames
