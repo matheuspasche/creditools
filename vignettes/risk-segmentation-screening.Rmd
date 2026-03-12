@@ -1,0 +1,214 @@
+---
+title: "Risk Segmentation Screening: Furar a Folhinha"
+subtitle: "Identifying Incremental Discrimination Power within Existing Risk Tiers"
+author: "Matheus Pasche"
+date: "`r Sys.Date()`"
+output: 
+  rmarkdown::html_vignette:
+    toc: true
+    number_sections: true
+vignette: >
+  %\VignetteIndexEntry{Risk Segmentation Screening: Furar a Folhinha}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5
+)
+```
+
+# Introduction
+
+In credit risk management, a common challenge is finding ways to increase approval rates without increasing the overall bad rate. One effective strategy is **Risk Segmentation Screening**, colloquially known as "Furar a Folhinha" (literally "Punching through the sheet").
+
+The goal is to identify variables that can further segment an existing risk tier (e.g., a specific Rating or Score Band). If a variable can split an "Average" risk group into a "Low-Risk" subgroup and a "High-Risk" subgroup, we can potentially approve more people from the new "Low-Risk" portion.
+
+# 1. Theoretical Framework
+
+Existing risk groups (Ratings) are typically established using a primary score. However, no score is perfect. There is often **residual information** in other variables that the primary score didn't capture.
+
+`screen_risk_segments()` allows you to test thousands of variables against your current ratings to find:
+1.  **A+ Potential**: Variables that create a segment significantly better than the tier average.
+2.  **Information Value (IV)**: Discrimination power *within* each specific tier.
+3.  **PD Spread**: The difference between the best and worst sub-segments.
+
+# 2. Basic Usage
+
+We will use the package's native `generate_sample_data()` function to create a realistic analytical base.
+
+```{r baseline}
+library(creditools)
+library(dplyr)
+
+# 1. Generate realistic dataset (20k applicants, 10% default rate)
+data <- generate_sample_data(
+  n_applicants = 20000,
+  correlation = 0.6,
+  base_default_rate = 0.10,
+  seed = 42
+)
+
+# 2. Establish baseline ratings (Rating 1 to 5) using 'old_score'
+base_model <- find_risk_groups(
+  data = data,
+  score_cols = "old_score",
+  default_col = "defaulted",
+  max_groups = 5,
+  quiet = TRUE
+)
+
+# Attach results back to data
+data$rating <- base_model$data$risk_rating
+
+# 3. Screen for variables that can "break" these ratings
+# We test 'new_score' and 'bureau_derogatory' as candidates
+screening_results <- screen_risk_segments(
+  data = data,
+  base_risk_col = "rating",
+  candidate_cols = c(new_score, bureau_derogatory, age),
+  default_col = "defaulted",
+  n_bins = 5
+)
+
+head(screening_results)
+```
+
+# 3. Interpreting Results
+
+The output is a long-format table showing metrics for each variable within each risk group.
+
+```{r analysis}
+# Find top variables for Rating 3 (Middle of the pack)
+as.data.frame(screening_results) %>%
+  filter(risk_group == 3) %>%
+  arrange(desc(iv))
+```
+
+In this example, if a variable has a high **IV** and a large **pd_spread** for Rating 3, it means we can "punch through" Rating 3 and identify a much better (lower PD) subgroup.
+
+# 4. Large-Scale Screening
+
+In practice, you might be testing hundreds or thousands of candidate variables. `screen_risk_segments()` is designed to handle this efficiently using `tidyselect` and parallel processing.
+
+```{r multi_score, eval = FALSE}
+# Selecting all columns that start with 'bureau_' or 'score_'
+screening_results <- screen_risk_segments(
+  data = big_data,
+  base_risk_col = "rating",
+  candidate_cols = c(starts_with("bureau_"), starts_with("score_")),
+  default_col = "defaulted",
+  n_bins = 10,
+  parallel = TRUE,  # Enable multi-core execution
+  .progress = TRUE  # Show progress bar
+)
+
+# Identify variables with the highest PD Spread in high-risk tiers
+screening_results %>%
+  filter(risk_group >= 4) %>%
+  arrange(desc(pd_spread))
+```
+
+The C++ backend ensures that even with thousands of variables and millions of rows, the initial "quantile" pass is completed in seconds.
+
+# 5. Clustered Screening: Finding Optimal Splits
+
+While uniform quantiles are fast, you may want to find the **statistically optimal** split within a tier (e.g., maximizing Information Value or minimizing Ward distance). 
+
+`creditools` allows you to switch the `method` to `"ward"` or `"iv"`:
+
+```{r clustered}
+# Use Ward Clustering to find the 2 most stable sub-segments per rating
+clustered_screening <- screen_risk_segments(
+  data = data,
+  base_risk_col = "rating",
+  candidate_cols = c(new_score, bureau_derogatory),
+  default_col = "defaulted",
+  n_bins = 20,          # Initial micro-bins
+  method = "ward",      # Use clustering engine
+  max_groups = 2,       # Create at most 2 groups per tier
+  min_vol_ratio = 0.05  # Ensure at least 5% volume in each split
+)
+
+head(clustered_screening)
+```
+
+By using `method = "ward"`, the engine ensures that the resulting segments are monotonic and satisfy volume constraints, making them ready for immediate policy implementation.
+
+# 6. Realizing Segments and OOT Validation (The Predict Workflow)
+
+Once you identify a "winning" variable that provides high discrimination within a tier, you want to actually apply those segments back to your database or to a new Out-Of-Time (OOT) dataset.
+
+`creditools` provides a standard `predict()` method for both `find_risk_groups` and `screen_risk_segments`. This allows you to treat your segmentation as a "model" that can be reapplied consistently.
+
+### Applying Ratings to OOT
+
+The `find_risk_groups()` object stores the exact quantile boundaries used during training. This ensures that when you call `predict()` on a new dataset, the binning is identical to the training phase.
+
+```{r predict_rating}
+# Split data into Train and OOT
+train_data <- data %>% filter(vintage < as.Date("2024-01-01"))
+oot_data <- data %>% filter(vintage >= as.Date("2024-01-01"))
+
+# 1. Train the baseline model
+rating_model <- find_risk_groups(train_data, "old_score", "defaulted", bins = 10, quiet = TRUE)
+
+# 2. Apply to OOT
+oot_with_rating <- predict(rating_model, oot_data)
+
+head(oot_with_rating %>% select(id, old_score, risk_rating))
+```
+
+### Realizing the Sub-segments ("Furar a Folhinha" on OOT)
+
+Similarly, `screen_risk_segments()` stores the "Recipe" (quantile boundaries + clustering mapping) for every variable screened. You can then "materialize" any chosen candidate using `predict()`.
+
+```{r predict_segment}
+# 1. Screen on Train (using the ratings we created)
+screening_res <- screen_risk_segments(
+  data = rating_model$data, 
+  base_risk_col = "risk_rating",
+  candidate_cols = c(new_score, bureau_derogatory),
+  default_col = "defaulted",
+  method = "ward"
+)
+
+# 2. Realize 'new_score' segments on OOT
+oot_segmented <- predict(screening_res, oot_with_rating, variable = "new_score")
+
+# The result contains labels like "1.1", "1.2", "2.1", etc.
+table(oot_segmented$risk_rating_segmented)
+```
+
+By using the `predict()` workflow, you ensure that your Out-Of-Time validation is statistically sound, as boundaries are not recalculated on the validation set, preventing data leakage.
+
+# 7. Technical Principles: The Heart of Stability
+
+A key differentiator of `creditools` is its focus on **Temporal Stability**. In credit risk, a model that is accurate today but flips its risk ordering tomorrow is dangerous.
+
+### How it works under the hood
+
+When you provide a `time_col` (e.g., vintage/month), the clustering engines (Ward and IV) operate in a longitudinal space:
+
+1.  **Longitudinal Centroids**: Each potential risk group is represented by a vector of default rates over time $[PD_{m1}, PD_{m2}, ..., PD_{mn}]$.
+2.  **Curve Similarity**: The Ward engine minimizes the sum of squared differences between these curves, ensuring that groups with similar "behavior" (e.g., sensitive to the same economic cycles) are merged.
+3.  **Non-Crossing Constraint**: The engine strictly enforces that Group $i$ must have a lower PD than Group $i+1$ in at least $N - max\_crossings$ periods. If they cross too often, they are merged, effectively "averaging out" the noise.
+
+### Visualizing Stability
+
+You can visualize this stability directly using the `plot()` method on a `find_risk_groups` object. It generates a ribbon plot showing the confidence intervals of PD per rating over time.
+
+```r
+# If you have a find_risk_groups object:
+# plot(base_model)
+```
+
+By ensuring that these ribbons do not overlap significantly and maintain their vertical order, you verify that your risk strategy is robust for production.
+
+# Conclusion
+
+Risk Segmentation Screening is a surgical tool for portfolio growth. By identifying "pockets" of low risk within previously discarded or mediocre segments, while enforcing strict temporal stability, analysts can safely expand the credit frontier with confidence.

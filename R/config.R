@@ -226,17 +226,17 @@ validate_credit_policy <- function(policy) {
   }
 
   if (length(policy$stress_scenarios) > 0) {
-    if (!is.list(policy$stress_scenarios) || !all(purrr::map_lgl(policy$stress_scenarios, inherits, "stress_scenario"))) {
+    if (!is.list(policy$stress_scenarios) || !all(.parallel_map_lgl(policy$stress_scenarios, inherits, "stress_scenario", .parallel = FALSE))) {
       cli::cli_abort("{.arg stress_scenarios} must be a list of objects from {.fn stress_aggravation}, {.fn stress_monotonic_increase}, or {.fn stress_custom}.")
     }
-    is_agg_by <- purrr::map_lgl(policy$stress_scenarios, ~ .x$type == "aggravation" && !is.null(.x$by))
+    is_agg_by <- .parallel_map_lgl(policy$stress_scenarios, ~ .x$type == "aggravation" && !is.null(.x$by), .parallel = FALSE)
     if (any(is_agg_by) && is.null(policy$risk_level_col)) {
       cli::cli_abort("A {.arg risk_level_col} must be provided in the policy when using {.code by} in {.fn stress_aggravation}.")
     }
   }
 
   if (length(policy$simulation_stages) > 0) {
-    if (!is.list(policy$simulation_stages) || !all(purrr::map_lgl(policy$simulation_stages, inherits, "credit_policy_stage"))) {
+    if (!is.list(policy$simulation_stages) || !all(.parallel_map_lgl(policy$simulation_stages, inherits, "credit_policy_stage", .parallel = FALSE))) {
       cli::cli_abort("{.arg simulation_stages} must be a list of objects from {.fn stage_cutoff} or {.fn stage_rate}.")
     }
   }

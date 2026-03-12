@@ -30,7 +30,8 @@ test_that("find_risk_groups successfully matrixes, prunes and evaluates OOT", {
     )
 
     # Assertions
-    # 1. Dimensions and columns
+    # 1. Class and structure
+    expect_s3_class(res, "credit_risk_groups")
     expect_equal(nrow(res$data), n)
     expect_true("risk_rating" %in% names(res$data))
 

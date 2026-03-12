@@ -11,6 +11,7 @@ find_pairwise_risk_groups(
   default_col,
   time_col,
   quiet = FALSE,
+  optimization_method = c("ward", "iv"),
   ...
 )
 }
@@ -27,6 +28,8 @@ find_pairwise_risk_groups(
 
 \item{quiet}{Whether to suppress progress and status messages. Default is FALSE.}
 
+\item{optimization_method}{The clustering algorithm to use: \code{"ward"} or \code{"iv"}.}
+
 \item{...}{Additional arguments passed natively to \code{find_risk_groups()} (e.g., \code{parallel = TRUE}).}
 }
 \value{
@@ -40,6 +43,7 @@ primary vs challenger 2...) and generates parallel Risk Groups. Includes a progr
 the heavy algorithmic lifting natively.
 }
 \examples{
+\donttest{
 data(applicants)
 results <- find_pairwise_risk_groups(
     data = applicants,
@@ -49,4 +53,5 @@ results <- find_pairwise_risk_groups(
     time_col = "vintage",
     max_groups = 3
 )
+}
 }

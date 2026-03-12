@@ -179,7 +179,7 @@ swap_in
 
 <td style="text-align:left;">
 
-11.75%
+11.78%
 </td>
 
 </tr>
@@ -428,6 +428,34 @@ centroid (mean default rate). This minimizes the intra-cluster variance,
 while `creditools` ensures that the final $`N`$ groups follow a strictly
 increasing risk order, preventing “noisy” reversals in the Risk Matrix.
 
+\### The Temporal Stability Engine (“Heart of Credit”)
+
+In credit risk, a model that is accurate today but flips its risk
+ordering tomorrow is dangerous. `creditools` (v0.5.0+) introduces the
+**Temporal Stability Engine**:
+
+1.  **Longitudinal Centroids**: Clustering engines (Ward/IV) work in a
+    longitudinal space, treating each potential group as a vector of PDs
+    across vintages.
+2.  **Non-Crossing Constraint**: Strictly enforces that Group $`i`$ must
+    have a lower PD than Group $`i+1`$ across historical cohorts.
+3.  **Cross-Vintage Optimization**: Minimizes PD variance across time
+    windows, ensuring that Rating 1 is always the safest, even in crisis
+    periods.
+
+``` r
+# Enable temporal stability by passing the vintage column
+risk_groups <- find_risk_groups(
+  data = sim_data,
+  score_cols = "new_score",
+  default_col = "defaulted",
+  time_col = "vintage",   # The Engine of Stability
+  max_groups = 5
+)
+```
+
+------------------------------------------------------------------------
+
 ``` r
 # Create 20 micro-bins and merge them into 5 stable, monotonic Risk Ratings
 risk_groups <- find_risk_groups(
@@ -448,14 +476,87 @@ plot(risk_groups)
 
 ------------------------------------------------------------------------
 
+### 5. High-Scale Risk Screening (“Furar a Folhinha”)
+
+In portfolios with thousands of candidate variables, identifying which
+ones provide incremental discrimination within an existing rating is a
+massive computational task.
+
+`creditools` provides `screen_risk_segments()`, a high-performance
+screening engine that uses a **C++ kernel** to evaluate IV (Information
+Value) and PD Spread across candidate variables for each of your
+existing risk tiers.
+
+``` r
+# 1. Establish existing ratings
+rating_model <- find_risk_groups(sim_data, "old_score", "defaulted", bins = 10, quiet = TRUE)
+
+# 2. Screen for variables that can "break" these ratings
+# This engine can handle 5000+ variables and millions of rows in seconds
+screening_res <- screen_risk_segments(
+  data = rating_model$data,
+  base_risk_col = "risk_rating",
+  candidate_cols = c(new_score, bureau_derogatory, age),
+  default_col = "defaulted"
+)
+
+# Identify top variables to "punch through" for the middle rating (e.g. 5)
+screening_res$metrics %>% 
+  filter(risk_group == 5) %>% 
+  arrange(desc(iv))
+#> # A tibble: 3 x 7
+#>   variable          risk_group      iv pd_min pd_max pd_spread tier_vol
+#>   <chr>                  <int>   <dbl>  <dbl>  <dbl>     <dbl>    <dbl>
+#> 1 new_score                  5 0.0340   0.074  0.124    0.0498     5006
+#> 2 bureau_derogatory          5 0.0202   0.082  0.120    0.0378     5006
+#> 3 age                        5 0.00524  0.092  0.116    0.0238     5006
+```
+
+### 6. The “Recipe” Predict Workflow
+
+A unique feature of `creditools` is the ability to treat your
+segmentation as a model. Both rating and screening objects store their
+**“Recipes”** (absolute quantile boundaries and cluster mappings),
+ensuring that Out-Of-Time (OOT) validation is mathematically consistent.
+
+``` r
+# Apply the training boundaries to a new Out-Of-Time dataset
+oot_data <- generate_sample_data(n = 5000, seed = 99)
+oot_with_rating <- predict(rating_model, oot_data)
+
+# Materialize a specific sub-segmentation chosen during screening
+oot_final <- predict(screening_res, oot_with_rating, variable = "new_score")
+
+table(oot_final$risk_rating_segmented)
+#> 
+#> 1.10  1.3  1.4  1.5  1.6  1.7  1.8  1.9 10.1 10.2 10.3 10.4 10.5 10.6 10.7 10.8 
+#>  241    5    8    8   18   38   75  107  216   95   70   51   26   13    6    4 
+#> 10.9  2.1 2.10  2.2  2.3  2.4  2.5  2.6  2.7  2.8  2.9  3.1 3.10  3.2  3.3  3.4 
+#>    1    2  102    3   13   16   37   49   84   98  118    7   67   15   21   39 
+#>  3.5  3.6  3.7  3.8  3.9  4.1 4.10  4.2  4.3  4.4  4.5  4.6  4.7  4.8  4.9  5.1 
+#>   47   65   74   84   80   11   53   16   35   58   60   73   64   65   63   11 
+#> 5.10  5.2  5.3  5.4  5.5  5.6  5.7  5.8  5.9  6.1 6.10  6.2  6.3  6.4  6.5  6.6 
+#>   20   33   52   55   59   59   76   58   49   33   13   52   66   65   74   63 
+#>  6.7  6.8  6.9  7.1 7.10  7.2  7.3  7.4  7.5  7.6  7.7  7.8  7.9  8.1 8.10  8.2 
+#>   64   56   32   36    7   65   62   89   74   64   44   33   25   73    4   76 
+#>  8.3  8.4  8.5  8.6  8.7  8.8  8.9  9.1 9.10  9.2  9.3  9.4  9.5  9.6  9.7  9.8 
+#>   72   68   45   47   40   23   17  124    1  117  100   85   54   33   13   12 
+#>  9.9 
+#>    6
+```
+
+------------------------------------------------------------------------
+
 ## Capabilities Summary
 
 `creditools` is built for industry-scale deployment: - **Massive
 Analysis**: Evaluate hundreds of scores and cutoff combinations
 simultaneously. - **Hierarchical Matrixing**: Generate stable, monotonic
-Risk Matrices (RBP) across multiple score dimensions. - **Governance**:
-A deterministic, reproducible framework for Justification and Model
-Transition documentation.
+Risk Matrices (RBP) using Ward or IV-based Rcpp engines. - **High-Scale
+Screening**: “Furar a Folhinha” with thousands of variables and
+**model-like Predict API**. - **Governance**: A deterministic,
+reproducible framework for Justification and Model Transition
+documentation.
 
 ## Installation
 
@@ -466,5 +567,7 @@ devtools::install_github("matheuspasche/creditools")
 
 ## Documentation
 
-For a detailed case study involving multi-stage funnel optimization,
-see: `vignette("multi-stage-funnel", package = "creditools")`
+For detailed guides and case studies: -
+`vignette("risk-segmentation-screening", package = "creditools")` -
+**New!** - `vignette("multi-stage-funnel", package = "creditools")` -
+`vignette("tradeoff-analysis", package = "creditools")`

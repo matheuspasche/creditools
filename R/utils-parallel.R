@@ -27,9 +27,13 @@
         workers_count <- max(1, future::availableCores() - 1)
     }
 
-    if (inherits(future::plan(), "sequential")) {
+    # Check if we already have a parallel plan active (e.g. from a parent call)
+    current_plan <- future::plan()
+    is_sequential <- inherits(current_plan, "sequential")
+
+    if (is_sequential) {
         future::plan(future::multisession, workers = workers_count)
-        # Register restoration in the caller's environment
+        # Register restoration in the caller's environment only if we changed it
         do.call("on.exit", list(quote(future::plan(future::sequential)), add = TRUE), envir = env)
     }
 
@@ -69,6 +73,28 @@
     } else {
         # Older purrr versions do not support .progress.
         do.call(purrr::map, c(list(.x = .x, .f = .f), args))
+    }
+}
+
+#' Internal wrapper for parallel map_lgl operations
+#' @keywords internal
+.parallel_map_lgl <- function(.x, .f, ..., .parallel = FALSE, .options = NULL, .progress = FALSE) {
+    args <- list(...)
+    seed <- if (!is.null(args$.seed)) args$.seed else TRUE
+    args$.seed <- NULL
+
+    if (.parallel && requireNamespace("furrr", quietly = TRUE)) {
+        if (is.null(.options)) {
+            .options <- furrr::furrr_options(globals = TRUE, packages = c("creditools", "dplyr"), seed = seed)
+        } else if (inherits(.options, "furrr_options")) {
+            .options$seed <- seed
+        } else if (is.list(.options)) {
+            .options$seed <- seed
+            .options <- do.call(furrr::furrr_options, .options)
+        }
+        do.call(furrr::future_map_lgl, c(list(.x = .x, .f = .f, .options = .options, .progress = .progress), args))
+    } else {
+        do.call(purrr::map_lgl, c(list(.x = .x, .f = .f), args))
     }
 }
 

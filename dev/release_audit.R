@@ -95,7 +95,7 @@ check_documentation_tags <- function() {
     all_exports <- unique(c(exports, s3_exports))
     # Remove pipe and common base generics that don't need their own Rd usually
     # Also ignore internal operators beginning with %, !, |, &
-    all_exports <- all_exports[!all_exports %in% c("plot", "print", "summary", "as.list", "as.data.frame")]
+    all_exports <- all_exports[!all_exports %in% c("plot", "print", "summary", "as.list", "as.data.frame", "predict")]
     all_exports <- all_exports[!grepl("^%|^!|^\\||^&", all_exports)]
 
     cli_alert_info("Found {length(all_exports)} exported symbols. Checking .Rd files...")
