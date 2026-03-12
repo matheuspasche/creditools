@@ -53,11 +53,11 @@ find_risk_groups(
 \value{
 An object of class \code{credit_risk_groups}, which is a list containing:
 \itemize{
-\item \verb{$data}: The original data frame with a new column \code{risk_rating} attached.
-\item \verb{$mapping}: A lookup table defining the boundaries of the final merged risk groups.
-\item \verb{$recipes}: A list of quantile boundaries for each score used, enabling \code{predict()}.
-\item \verb{$report}: A summary tibble validating the monotonicity and volume of the final hierarchy in BOTH train and OOT periods.
-\item \verb{$metadata}: Internal parameters used during training.
+\item \code{data}: The original data frame with a new column \code{risk_rating} attached.
+\item \code{mapping}: A lookup table defining the boundaries of the final merged risk groups.
+\item \code{recipes}: A list of quantile boundaries for each score used, enabling \code{predict()}.
+\item \code{report}: A summary tibble validating the monotonicity and volume of the final hierarchy in BOTH train and OOT periods.
+\item \code{metadata}: Internal parameters used during training.
 }
 }
 \description{
