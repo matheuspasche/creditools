@@ -2,6 +2,9 @@
 
 0 errors | 0 warnings | 1 note
 
+* Note: `unable to verify current time` is environmental (local).
+* The `qpdf` warning observed locally is also environmental; R CMD check on CRAN will have qpdf available for PDF compression.
+
 * This is a release update (v0.5.0).
 * The note regarding "New submission" or "First release" is expected if applicable.
 * All examples have been optimized for temporal stability and performance.
