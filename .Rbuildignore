@@ -15,7 +15,10 @@
 ^docs$
 ^pkgdown$
 ^cran-comments\.md$
+^cran-submission\.md$
 ^CRAN-SUBMISSION$
+^full_check_output\.txt$
+^audit_stage5_check\.txt$
 ^README\.html$
 ^test_out\.txt$
 ^tests\.log$
