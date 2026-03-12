@@ -21,6 +21,11 @@
 #' @importFrom dplyr filter
 #' @importFrom purrr map map_int compact keep
 #' @importFrom rlang := %||% .data
-#'
+
+# usethis namespace: start
+#' @useDynLib creditools, .registration = TRUE
+#' @importFrom Rcpp sourceCpp
+# usethis namespace: end
+
 #' @keywords internal
 "_PACKAGE"

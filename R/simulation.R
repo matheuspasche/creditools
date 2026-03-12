@@ -106,7 +106,7 @@ run_simulation <- function(data,
     } else {
       # Determined final approval status under the new policy
       # Mapping across stage columns to check for cumulative approval
-      final_approval_flags <- purrr::map(data[unlist(stage_approval_cols)], function(col) col == 1 & !is.na(col))
+      final_approval_flags <- .parallel_map(data[unlist(stage_approval_cols)], function(col) col == 1 & !is.na(col), .parallel = FALSE)
       data$new_approval <- as.integer(Reduce(`&`, final_approval_flags))
     }
   } else {
@@ -170,11 +170,11 @@ simulate_stage <- function(data, stage, policy, method = c("stochastic", "analyt
 simulate_stage.stage_cutoff <- function(data, stage, policy, method = c("stochastic", "analytical")) {
   method <- match.arg(method)
   # Logical AND across all defined cutoffs in the stage
-  results <- purrr::map(seq_along(stage$cutoffs), function(i) {
+  results <- .parallel_map(seq_along(stage$cutoffs), function(i) {
     col <- names(stage$cutoffs)[i]
     val <- stage$cutoffs[[i]]
     as.integer(data[[col]] >= val)
-  })
+  }, .parallel = FALSE)
 
   final_binary <- Reduce(`&`, results)
 
@@ -255,12 +255,12 @@ validate_simulation_inputs <- function(data, policy) {
   )
 
   # Check columns inside stages
-  stage_cols <- purrr::map(policy$simulation_stages, function(s) {
+  stage_cols <- .parallel_map(policy$simulation_stages, function(s) {
     if (s$type == "cutoff") {
       return(names(s$cutoffs))
     }
     return(NULL)
-  }) %>% unlist()
+  }, .parallel = FALSE) %>% unlist()
 
   required_cols <- unique(c(required_cols, stage_cols))
   missing_cols <- setdiff(required_cols, names(data))
@@ -368,7 +368,7 @@ simulate_swap_in_defaults <- function(data, policy, method = c("stochastic", "an
 
   # Calculate probability for each stress scenario
   # Internal loops are sequential to avoid serialization overhead in nested simulations
-  prob_list <- purrr::map(seq_along(policy$stress_scenarios), function(seq_idx) {
+  prob_list <- .parallel_map(seq_along(policy$stress_scenarios), function(seq_idx) {
     scenario <- policy$stress_scenarios[[seq_idx]]
     res <- switch(scenario$type,
       "aggravation" = calc_prob_aggravation(data, policy, scenario),
@@ -378,7 +378,7 @@ simulate_swap_in_defaults <- function(data, policy, method = c("stochastic", "an
     )
     col_name <- paste0("prob_", seq_idx)
     tibble::tibble(!!col_name := res)
-  })
+  }, .parallel = FALSE)
   prob_matrix <- dplyr::bind_cols(prob_list)
 
   # Aggregate probabilities across scenarios

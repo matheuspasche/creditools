@@ -7,6 +7,19 @@
 #' statistical pruning algorithms (Volume Pruning and Non-Crossing Stability Pruning)
 #' to merge statistically insignificant or overlapping bands across time (vintages).
 #'
+#' @details
+#' ### Longitudinal Clustering (Temporal Stability)
+#' The "Heart" of `creditools` is ensuring that risk groups remain stable and ordered over time.
+#' When `time_col` is provided, the clustering engine (Ward or IV) does not just look at global PDs.
+#' Instead, it treats each potential group as a longitudinal vector of PDs across vintages.
+#'
+#' 1. **Ward Method (Stability)**: Minimizes the Euclidean distance between the PD curves of
+#'    adjacent groups. Two groups with similar global PDs but different behavior in crisis
+#'    periods will be kept separate.
+#' 2. **PD Crossings**: The `max_crossings` parameter acts as a hard constraint. If two groups
+#'    invert their risk ordering (e.g., Group 1 has higher PD than Group 2) in more than
+#'    `max_crossings` months, the engine will force a merge to ensure reliable decisioning.
+#'
 #' @param data A data frame containing the historical applicant data.
 #' @param score_cols A character vector containing the names of the score columns to matrix.
 #' @param default_col A character string with the column name indicating the observed default (0 or 1).
@@ -17,20 +30,27 @@
 #' @param oot_date An optional cutoff Date/POSIXt object. Data where `time_col >= oot_date` will be preserved exclusively for Out-Of-Time (OOT) validation reporting.
 #' @param max_groups An optional integer specifying the maximum number of risk groups to return. If NULL, pruning is driven solely by volume and stability thresholds.
 #' @param quiet Whether to suppress progress and status messages. Default is FALSE.
+#' @param optimization_method The clustering algorithm to use: `"ward"` (default, ultra-stable) or `"iv"` (experimental, maximizes Information Value).
+#' @param lambda_cross Penalty weight for vintage PD crossings (only used if `optimization_method = "iv"`). Default is 0.5.
+#' @param lambda_vol Penalty weight for PD volatility over time (only used if `optimization_method = "iv"`). Default is 0.2.
 #' @param ... Additional options passed to internal functions (e.g., `parallel = TRUE`, `n_workers = 4`).
 #'
-#' @return A list containing:
-#'   - `$data`: The original data frame with a new column `final_risk_group` attached to each row.
+#' @return An object of class `credit_risk_groups`, which is a list containing:
+#'   - `$data`: The original data frame with a new column `risk_rating` attached.
 #'   - `$mapping`: A lookup table defining the boundaries of the final merged risk groups.
+#'   - `$recipes`: A list of quantile boundaries for each score used, enabling `predict()`.
 #'   - `$report`: A summary tibble validating the monotonicity and volume of the final hierarchy in BOTH train and OOT periods.
+#'   - `$metadata`: Internal parameters used during training.
 #'
 #' @importFrom dplyr mutate filter group_by summarize arrange ntile bind_rows left_join n pull select everything
+#' @importFrom stats setNames
 #' @importFrom purrr reduce map_df
 #' @importFrom rlang .data
-#' @importFrom tidyr drop_na pivot_wider
+#' @importFrom tidyr drop_na pivot_wider complete
 #' @export
 #'
 #' @examples
+#' \donttest{
 #' # Use the built-in applicants dataset
 #' data(applicants)
 #' groups <- find_risk_groups(
@@ -46,6 +66,7 @@
 #'
 #' # Visualize the group stability over time
 #' plot(groups)
+#' }
 find_risk_groups <- function(data,
                              score_cols,
                              default_col,
@@ -56,7 +77,11 @@ find_risk_groups <- function(data,
                              oot_date = NULL,
                              max_groups = NULL,
                              quiet = FALSE,
+                             optimization_method = c("ward", "iv"),
+                             lambda_cross = 0.5,
+                             lambda_vol = 0.2,
                              ...) {
+    optimization_method <- match.arg(optimization_method)
 
     # Basic Validation
     missing_cols <- setdiff(c(score_cols, default_col, time_col), names(data))
@@ -92,14 +117,29 @@ find_risk_groups <- function(data,
     # --- STEP 1 & 2: INITIAL N-DIMENSIONAL BINNING & 1D EMPIRICAL RANKING ---
 
     # Bin each score independently into tiles
+    # We store the boundaries (recipe) for each score to enable prediction
     bin_cols <- paste0(score_cols, "_bin")
+    score_recipes <- list()
+
     for (i in seq_along(score_cols)) {
         sc <- score_cols[i]
         bc <- bin_cols[i]
-        train_data[[bc]] <- dplyr::ntile(train_data[[sc]], bins)
+
+        # Calculate quantile-based boundaries on the training data
+        # We use type = 7 (default) for continuity
+        q_probs <- seq(0, 1, length.out = bins + 1)
+        bounds <- stats::quantile(train_data[[sc]], q_probs, na.rm = TRUE)
+        # Ensure unique boundaries to avoid findInterval issues with ties
+        bounds <- unique(bounds)
+        score_recipes[[sc]] <- bounds
+
+        # Apply binning using findInterval for consistency with future predicts
+        # findInterval returns index in [1, length(bounds)]
+        train_data[[bc]] <- findInterval(train_data[[sc]], bounds, all.inside = TRUE)
     }
 
     # Aggregate combinations and determine their global empirical PD
+    # We use complete() to ensure ALL possible combinations are present (handling matrix sparsity)
     matrix_summary <- train_data %>%
         dplyr::group_by(dplyr::across(dplyr::all_of(bin_cols))) %>%
         dplyr::summarize(
@@ -107,9 +147,22 @@ find_risk_groups <- function(data,
             combo_bads = sum(!!rlang::sym(default_col), na.rm = TRUE),
             empirical_pd = .data$combo_bads / .data$combo_vol,
             .groups = "drop"
+        )
+    
+    # Fill missing cells with zero volume and global expected PD (interpolation fallback)
+    # This prevents NA risk_ratings during OOT prediction
+    all_bins <- lapply(score_recipes, function(b) seq_len(length(b) - 1))
+    names(all_bins) <- bin_cols
+    
+    matrix_summary <- matrix_summary %>%
+        dplyr::ungroup() %>%
+        tidyr::complete(!!!all_bins, fill = list(combo_vol = 0, combo_bads = 0)) %>%
+        dplyr::mutate(
+            empirical_pd = ifelse(.data$combo_vol == 0, mean(train_data[[default_col]], na.rm = TRUE), .data$empirical_pd)
         ) %>%
         # Sort from Lowest Risk to Highest Risk
-        dplyr::arrange(.data$empirical_pd) %>%
+        # We use explicit column indices to break ties and ensure determinism (crucial for parallel consistency)
+        dplyr::arrange(.data$empirical_pd, !!!rlang::syms(bin_cols)) %>%
         # Assign an initial continuous 1D ranking
         dplyr::mutate(micro_rating = dplyr::row_number())
 
@@ -138,109 +191,64 @@ find_risk_groups <- function(data,
     }
 
     # --- AGGLOMERATIVE CLUSTERING OPTIMIZATION LOOP ---
-    if (!quiet) cli::cli_alert_info("Optimizing risk clusters (Ward Distance + Stability)...")
+    # --- AGGLOMERATIVE CLUSTERING OPTIMIZATION (Rcpp) ---
+    if (!quiet) cli::cli_alert_info("Optimizing risk clusters via Rcpp engine...")
 
-    converged <- FALSE
-    while (!converged) {
-        group_bads_vols <- current_groups %>%
-            dplyr::mutate(combo_bads = .data$empirical_pd * .data$combo_vol) %>%
-            dplyr::group_by(.data$group_id) %>%
-            dplyr::summarize(
-                vol = sum(.data$combo_vol),
-                bads = sum(.data$combo_bads),
-                pd = .data$bads / .data$vol,
-                .groups = "drop"
-            ) %>%
-            dplyr::arrange(.data$group_id)
+    # Prepare matrices for stability checks if time_col provided
+    n_bins <- nrow(matrix_summary)
+    if (!is.null(time_col)) {
+        # Ensure we have all periods for all micro-ratings
+        periods <- sort(unique(train_data[[time_col]]))
+        n_months <- length(periods)
 
-        group_summary <- group_bads_vols %>%
-            dplyr::mutate(vol_ratio = .data$vol / total_vol, mean_pd = .data$pd)
+        m_vols <- matrix(0, nrow = n_bins, ncol = n_months)
+        m_bads <- matrix(0, nrow = n_bins, ncol = n_months)
 
-        n_groups <- nrow(group_summary)
-        if (n_groups <= 1) break
+        period_map <- setNames(seq_along(periods), as.character(periods))
 
-        if (!is.null(monthly_stats)) {
-            current_monthly <- monthly_stats %>%
-                dplyr::inner_join(current_groups %>% dplyr::select(dplyr::all_of(c("micro_rating", "group_id"))), by = "micro_rating") %>%
-                dplyr::group_by(.data$group_id, !!rlang::sym(time_col)) %>%
-                dplyr::summarize(
-                    pd = sum(.data$bads) / sum(.data$vols),
-                    .groups = "drop"
-                ) %>%
-                tidyr::pivot_wider(names_from = tidyselect::all_of("group_id"), values_from = tidyselect::all_of("pd"))
-        } else {
-            current_monthly <- NULL
-        }
-
-        g_ids <- group_summary$group_id
-
-        # NOTE: Benchmarks showed that parallelizing this inner loop
-        # (furrr::future_map) is counter-productive due to overhead of small tasks.
-        # Keeping it sequential for maximum efficiency in single-run clustering.
-        min_cost <- Inf
-        best_pair <- NULL
-
-        for (i in seq_len(n_groups - 1)) {
-            g1 <- g_ids[i]
-            g2 <- g_ids[i + 1]
-
-            v1 <- group_summary$vol_ratio[i]
-            v2 <- group_summary$vol_ratio[i + 1]
-
-            pd1 <- group_summary$mean_pd[i]
-            pd2 <- group_summary$mean_pd[i + 1]
-
-            # Ward Distance
-            delta <- (v1 * v2) / (v1 + v2) * (pd1 - pd2)^2
-            cost <- delta
-
-            # Priority 1: Monotonicity (Inversion / Flat)
-            if (pd1 >= pd2) {
-                cost <- -1e9 + delta
-            }
-            # Priority 2: Volume constraint
-            else if (v1 < min_vol_ratio || v2 < min_vol_ratio) {
-                if (cost > -1e6) cost <- -1e6 + delta
-            }
-            # Priority 3: Stability (Non-Crossing)
-            else {
-                col1 <- as.character(g1)
-                col2 <- as.character(g2)
-
-                if (!is.null(current_monthly) && col1 %in% names(current_monthly) && col2 %in% names(current_monthly)) {
-                    valid_idx <- !is.na(current_monthly[[col1]]) & !is.na(current_monthly[[col2]])
-                    if (sum(valid_idx) > 0) {
-                        n_crossings <- sum(current_monthly[[col1]][valid_idx] >= current_monthly[[col2]][valid_idx])
-                        if (n_crossings > max_crossings) {
-                            if (cost > -1e3) cost <- -1e3 + delta
-                        }
-                    }
-                }
-            }
-
-            if (cost < min_cost) {
-                min_cost <- cost
-                best_pair <- c(g1, g2)
+        # Fill matrices using the pre-calculated monthly_stats
+        for (i in seq_len(nrow(monthly_stats))) {
+            r <- monthly_stats$micro_rating[i]
+            p <- as.character(monthly_stats[[time_col]][i])
+            c <- period_map[p]
+            if (!is.na(c)) {
+                m_vols[r, c] <- monthly_stats$vols[i]
+                m_bads[r, c] <- monthly_stats$bads[i]
             }
         }
-
-        if (min_cost < 0) {
-            # Constraint violated: Merge the pair with the most urgent penalty (and smallest delta)
-            current_groups <- current_groups %>%
-                dplyr::mutate(group_id = ifelse(.data$group_id == best_pair[2], best_pair[1], .data$group_id))
-            current_groups$group_id <- as.integer(as.factor(current_groups$group_id))
-        } else {
-            # Constraints satisfied
-            # Priority 4: Max Groups Tail Compression
-            if (!is.null(max_groups) && n_groups > max_groups) {
-                current_groups <- current_groups %>%
-                    dplyr::mutate(group_id = ifelse(.data$group_id == best_pair[1] | .data$group_id == best_pair[2], min(best_pair), .data$group_id))
-                current_groups$group_id <- as.integer(as.factor(current_groups$group_id))
-            } else {
-                converged <- TRUE
-            }
-        }
+    } else {
+        # Dummy matrices for C++ if no longitudinal data
+        m_vols <- matrix(0, nrow = n_bins, ncol = 1)
+        m_bads <- matrix(0, nrow = n_bins, ncol = 1)
     }
+
+    # Execute C++ Optimization Engine
+    if (optimization_method == "ward") {
+        final_group_mapping <- rcpp_optimize_clusters(
+            bin_vols = matrix_summary$combo_vol,
+            bin_bads = matrix_summary$combo_bads,
+            monthly_vols = m_vols,
+            monthly_bads = m_bads,
+            min_vol_ratio = min_vol_ratio,
+            max_crossings = max_crossings,
+            max_groups = if (is.null(max_groups)) 0 else max_groups
+        )
+    } else {
+        final_group_mapping <- rcpp_iv_optimize_clusters(
+            bin_vols = matrix_summary$combo_vol,
+            bin_bads = matrix_summary$combo_bads,
+            monthly_vols = m_vols,
+            monthly_bads = m_bads,
+            min_vol_ratio = min_vol_ratio,
+            lambda_cross = lambda_cross,
+            lambda_vol = lambda_vol,
+            max_bins = if (is.null(max_groups)) 0 else max_groups
+        )
+    }
+
+    # Assign optimized group IDs back to the mapping
+    current_groups <- matrix_summary %>%
+        dplyr::mutate(group_id = final_group_mapping)
 
     # --- FINALIZING AND REPORTING ---
 
@@ -252,12 +260,12 @@ find_risk_groups <- function(data,
 
     # Function to apply the mappings safely to any dataset
     apply_ratings <- function(df) {
-        # Bin scores according to provided parameters
-        # (Internal ntile is vectorized across rows but we do have multiple scores)
+        # Bin scores according to the boundaries established during training (the "recipe")
         for (i in seq_along(score_cols)) {
             sc <- score_cols[i]
             bc <- bin_cols[i]
-            df[[bc]] <- dplyr::ntile(df[[sc]], bins)
+            bounds <- score_recipes[[sc]]
+            df[[bc]] <- findInterval(df[[sc]], bounds, all.inside = TRUE)
         }
 
         # Left join the master lookup
@@ -301,6 +309,7 @@ find_risk_groups <- function(data,
         data = final_data,
         mapping = final_mapping,
         report = report,
+        recipes = score_recipes,
         metadata = list(
             score_cols = score_cols,
             default_col = default_col,
@@ -309,12 +318,65 @@ find_risk_groups <- function(data,
             max_crossings = max_crossings,
             bins = bins,
             oot_date = oot_date,
-            max_groups = max_groups
+            max_groups = max_groups,
+            optimization_method = optimization_method
         )
     )
 
     class(res) <- c("credit_risk_groups", class(res))
     return(res)
+}
+
+#' Predict Risk Groups on New Data
+#'
+#' @description
+#' `predict.credit_risk_groups()` applies a previously trained risk group model
+#' to a new dataset. It uses the exact quantile boundaries from the training
+#' data to ensure consistent binning before applying the final matrix mapping.
+#'
+#' @param object An object of class `credit_risk_groups`.
+#' @param newdata A data frame containing the same score columns as the training data.
+#' @param ... Not used.
+#'
+#' @return The `newdata` data frame with an additional `risk_rating` column.
+#' @export
+#' @importFrom stats predict
+predict.credit_risk_groups <- function(object, newdata, ...) {
+    score_cols <- object$metadata$score_cols
+    score_recipes <- object$recipes
+    bin_cols <- paste0(score_cols, "_bin")
+    final_mapping <- object$mapping
+
+    # 1. Apply Binning Recipes
+    for (sc in score_cols) {
+        bounds <- score_recipes[[sc]]
+        bc <- paste0(sc, "_bin")
+        newdata[[bc]] <- findInterval(newdata[[sc]], bounds, all.inside = TRUE)
+    }
+
+    # 2. Join with Final Mapping
+    # We join by the bin columns to retrieve the final rating
+    res <- newdata %>%
+        dplyr::left_join(final_mapping %>% dplyr::select(-dplyr::any_of("micro_rating")), by = bin_cols)
+
+    # 3. Clean up and Return
+    res <- res %>% dplyr::select(-dplyr::all_of(bin_cols))
+    return(res)
+}
+
+#' @export
+print.credit_risk_groups <- function(x, ...) {
+    cli::cli_h1("Risk Rating Model Object")
+    cli::cli_alert_info("Scores: {.val {x$metadata$score_cols}}")
+    cli::cli_alert_info("Final Groups: {.val {length(unique(x$mapping$risk_rating))}}")
+    cat("\n")
+    print(x$report)
+    invisible(x)
+}
+
+#' @export
+summary.credit_risk_groups <- function(object, ...) {
+    object$report
 }
 
 #' Pairwise Matrixing of Challengers vs Primary Score
@@ -332,12 +394,14 @@ find_risk_groups <- function(data,
 #' @param default_col A character string with the column name indicating the observed default (0 or 1).
 #' @param time_col A character string with the column name representing the vintage/time cohort.
 #' @param quiet Whether to suppress progress and status messages. Default is FALSE.
+#' @param optimization_method The clustering algorithm to use: `"ward"` or `"iv"`.
 #' @param ... Additional arguments passed natively to `find_risk_groups()` (e.g., `parallel = TRUE`).
 #'
 #' @return A named list where each element contains the clustered Output List from `find_risk_groups` tied to a specific Challenger.
 #' @export
 #'
 #' @examples
+#' \donttest{
 #' data(applicants)
 #' results <- find_pairwise_risk_groups(
 #'     data = applicants,
@@ -347,13 +411,16 @@ find_risk_groups <- function(data,
 #'     time_col = "vintage",
 #'     max_groups = 3
 #' )
+#' }
 find_pairwise_risk_groups <- function(data,
                                       primary_score,
                                       challenger_scores,
                                       default_col,
                                       time_col,
                                       quiet = FALSE,
+                                      optimization_method = c("ward", "iv"),
                                       ...) {
+    optimization_method <- match.arg(optimization_method)
     if (!quiet && requireNamespace("cli", quietly = TRUE)) {
         cli::cli_alert_info("Starting pairwise Risk Group search for 1 Primary vs {length(challenger_scores)} Challengers...")
     }
@@ -365,28 +432,56 @@ find_pairwise_risk_groups <- function(data,
     # Capture dots for passing to find_risk_groups
     extra_args <- list(...)
 
-    results_list <- .parallel_map(
-        .x = challenger_scores,
-        .f = function(challenger) {
-            if (!quiet && requireNamespace("cli", quietly = TRUE)) {
-                cli::cli_alert_info("Matrixing: {primary_score} x {challenger}")
-            }
-            # Prevent nested parallelism by forcing parallel = FALSE in the inner call
+    if (parallel && .Platform$OS.type == "unix") {
+        # Use mclapply on Unix for speed and simplicity
+        results_list <- parallel::mclapply(challenger_scores, function(challenger) {
             inner_args <- utils::modifyList(extra_args, list(parallel = FALSE))
             res <- do.call(find_risk_groups, c(list(
                 data = data,
                 score_cols = c(primary_score, challenger),
                 default_col = default_col,
                 time_col = time_col,
-                quiet = quiet
+                quiet = TRUE,
+                optimization_method = optimization_method
             ), inner_args))
             return(list(challenger = challenger, result = res))
-        },
-        .parallel = parallel,
-        .progress = !quiet,
-        # Don't pass furrr_options directly in the argument evaluation
-        .options = list(globals = TRUE, packages = c("creditools", "dplyr"))
-    )
+        }, mc.cores = parallel_setup$n_workers %||% (parallel::detectCores() - 1))
+    } else if (parallel) {
+        # Use parLapply on Windows (or as fallback)
+        cl <- parallel::makeCluster(parallel_setup$n_workers %||% (parallel::detectCores() - 1))
+        on.exit(parallel::stopCluster(cl), add = TRUE)
+        
+        # Export necessary data and functions
+        parallel::clusterExport(cl, varlist = c("data", "primary_score", "default_col", "time_col", "optimization_method", "extra_args", "find_risk_groups"), envir = environment())
+        parallel::clusterEvalQ(cl, library(creditools))
+        
+        results_list <- parallel::parLapply(cl, challenger_scores, function(challenger) {
+            inner_args <- utils::modifyList(extra_args, list(parallel = FALSE))
+            res <- do.call(find_risk_groups, c(list(
+                data = data,
+                score_cols = c(primary_score, challenger),
+                default_col = default_col,
+                time_col = time_col,
+                quiet = TRUE,
+                optimization_method = optimization_method
+            ), inner_args))
+            return(list(challenger = challenger, result = res))
+        })
+    } else {
+        # Sequential
+        results_list <- lapply(challenger_scores, function(challenger) {
+            inner_args <- utils::modifyList(extra_args, list(parallel = FALSE))
+            res <- do.call(find_risk_groups, c(list(
+                data = data,
+                score_cols = c(primary_score, challenger),
+                default_col = default_col,
+                time_col = time_col,
+                quiet = quiet,
+                optimization_method = optimization_method
+            ), inner_args))
+            return(list(challenger = challenger, result = res))
+        })
+    }
 
     # Reconstruct named list
     results <- list()

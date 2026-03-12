@@ -1,3 +1,17 @@
+# creditools 0.5.0: "High-Performance Release"
+
+*   **Temporal Stability Engine**:
+    - High-performance longitudinal clustering kernels in C++ (Ward and IV-based).
+*   **Recipe-Based Predict API**: 
+    - Full serialization support for clustering models. `find_risk_groups` and `screen_risk_segments` now return "recipes" (quantile boundaries and mappings).
+    - Introduced `predict()` S3 methods for `credit_risk_groups` and `credit_risk_screening` classes, enabling model-like application on OOT data.
+*   **High-Scale Segment Screening**:
+    - `screen_risk_segments()` handling thousands of candidate variables with memory-safe parallel batching.
+    - Tier-wise metrics (Information Value, PD Spread) calculated at the C++ level for maximum speed.
+*   **Production Readiness**:
+    - Robust matrix completion logic to handle unseen score/decile combinations in OOT data.
+    - Unified parallel processing framework via `utils-parallel.R`.
+
 # creditools 0.4.2
 
 *   **Tidyverse Best Practices**: Comprehensive standardization of selection (`select()`, `rename()`) and data-masking contexts across the package, resolving `tidyselect` deprecation warnings.

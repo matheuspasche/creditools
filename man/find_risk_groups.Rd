@@ -15,6 +15,9 @@ find_risk_groups(
   oot_date = NULL,
   max_groups = NULL,
   quiet = FALSE,
+  optimization_method = c("ward", "iv"),
+  lambda_cross = 0.5,
+  lambda_vol = 0.2,
   ...
 )
 }
@@ -39,14 +42,22 @@ find_risk_groups(
 
 \item{quiet}{Whether to suppress progress and status messages. Default is FALSE.}
 
+\item{optimization_method}{The clustering algorithm to use: \code{"ward"} (default, ultra-stable) or \code{"iv"} (experimental, maximizes Information Value).}
+
+\item{lambda_cross}{Penalty weight for vintage PD crossings (only used if \code{optimization_method = "iv"}). Default is 0.5.}
+
+\item{lambda_vol}{Penalty weight for PD volatility over time (only used if \code{optimization_method = "iv"}). Default is 0.2.}
+
 \item{...}{Additional options passed to internal functions (e.g., \code{parallel = TRUE}, \code{n_workers = 4}).}
 }
 \value{
-A list containing:
+An object of class \code{credit_risk_groups}, which is a list containing:
 \itemize{
-\item \verb{$data}: The original data frame with a new column \code{final_risk_group} attached to each row.
+\item \verb{$data}: The original data frame with a new column \code{risk_rating} attached.
 \item \verb{$mapping}: A lookup table defining the boundaries of the final merged risk groups.
+\item \verb{$recipes}: A list of quantile boundaries for each score used, enabling \code{predict()}.
 \item \verb{$report}: A summary tibble validating the monotonicity and volume of the final hierarchy in BOTH train and OOT periods.
+\item \verb{$metadata}: Internal parameters used during training.
 }
 }
 \description{
@@ -56,7 +67,24 @@ the scores, generates a 1D risk ranking based on expected defaults, and applies
 statistical pruning algorithms (Volume Pruning and Non-Crossing Stability Pruning)
 to merge statistically insignificant or overlapping bands across time (vintages).
 }
+\details{
+\subsection{Longitudinal Clustering (Temporal Stability)}{
+
+The "Heart" of \code{creditools} is ensuring that risk groups remain stable and ordered over time.
+When \code{time_col} is provided, the clustering engine (Ward or IV) does not just look at global PDs.
+Instead, it treats each potential group as a longitudinal vector of PDs across vintages.
+\enumerate{
+\item \strong{Ward Method (Stability)}: Minimizes the Euclidean distance between the PD curves of
+adjacent groups. Two groups with similar global PDs but different behavior in crisis
+periods will be kept separate.
+\item \strong{PD Crossings}: The \code{max_crossings} parameter acts as a hard constraint. If two groups
+invert their risk ordering (e.g., Group 1 has higher PD than Group 2) in more than
+\code{max_crossings} months, the engine will force a merge to ensure reliable decisioning.
+}
+}
+}
 \examples{
+\donttest{
 # Use the built-in applicants dataset
 data(applicants)
 groups <- find_risk_groups(
@@ -72,4 +100,5 @@ print(groups$report)
 
 # Visualize the group stability over time
 plot(groups)
+}
 }

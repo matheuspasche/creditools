@@ -119,7 +119,7 @@ validate_optimization_inputs <- function(data, config, cutoff_steps, target_defa
 
 #' @keywords internal
 generate_cutoff_ranges <- function(data, score_columns, cutoff_steps) {
-  purrr::map(score_columns, function(score_col) {
+  .parallel_map(score_columns, function(score_col) {
     score_values <- data[[score_col]]
     min_val <- floor(min(score_values, na.rm = TRUE))
     max_val <- ceiling(max(score_values, na.rm = TRUE))
@@ -129,7 +129,7 @@ generate_cutoff_ranges <- function(data, score_columns, cutoff_steps) {
     } else {
       seq(min_val, max_val, length.out = cutoff_steps)
     }
-  }) %>% purrr::set_names(score_columns)
+  }, .parallel = FALSE) %>% purrr::set_names(score_columns)
 }
 
 #' @keywords internal
@@ -180,7 +180,7 @@ evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
     score_data <- data[names(cutoff_ranges)]
 
     # Use simple vectorized loops for maximum speed in R
-    results_list <- purrr::map(seq_len(nrow(cutoff_combinations)), function(i) {
+    results_list <- .parallel_map(seq_len(nrow(cutoff_combinations)), function(i) {
       combo <- cutoff_combinations[i, ]
 
       # Vectorized binary decision for the entire dataset
@@ -212,7 +212,7 @@ evaluate_cutoff_combinations <- function(data, config, cutoff_ranges,
         tradeoff_score = app_rate - (5 * def_rate)
       )
       dplyr::bind_cols(res, tibble::as_tibble(combo %>% dplyr::select(-dplyr::all_of("combination_id")), .name_repair = "unique_quiet"))
-    }, .progress = TRUE)
+    }, .parallel = FALSE, .progress = TRUE)
 
     return(dplyr::bind_rows(results_list))
   }
