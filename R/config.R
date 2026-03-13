@@ -53,27 +53,87 @@ credit_policy <- function(applicant_id_col,
                           simulation_stages = list(),
                           stress_scenarios = list()) {
 
+  # Mandatory arguments check
+  if (missing(applicant_id_col)) cli::cli_abort("{.arg applicant_id_col} must be a single string or a symbol.")
+  if (missing(score_cols)) cli::cli_abort("{.arg score_cols} must be a character vector or symbols.")
+  if (missing(current_approval_col)) cli::cli_abort("{.arg current_approval_col} must be a single string or a symbol.")
+  if (missing(actual_default_col)) cli::cli_abort("{.arg actual_default_col} must be a single string or a symbol.")
+
+  # Hybrid resolution helper
+  # If it evaluates to a character, use that value (supports variables).
+  # Otherwise, take the symbol name as is (supports unquoted names).
+  resolve_hybrid <- function(q, arg_name, default_val = NULL) {
+    if (rlang::quo_is_null(q)) return(default_val)
+    val <- try(rlang::eval_tidy(q), silent = TRUE)
+    if (!inherits(val, "try-error") && is.character(val) && length(val) >= 1) {
+      if (length(val) > 1 && arg_name != "score_cols") {
+          cli::cli_abort("{.arg {arg_name}} must be a single string or a symbol.")
+      }
+      return(val)
+    }
+    # Fallback to symbol name if it's a symbol
+    tryCatch(rlang::as_name(q), error = function(e) {
+        if (!is.null(default_val)) return(default_val)
+        cli::cli_abort("{.arg {arg_name}} must be a single string or a symbol.")
+    })
+  }
+
+  id_col <- resolve_hybrid(rlang::enquo(applicant_id_col), "applicant_id_col")
+  curr_app_col <- resolve_hybrid(rlang::enquo(current_approval_col), "current_approval_col")
+  act_def_col <- resolve_hybrid(rlang::enquo(actual_default_col), "actual_default_col")
+
+  # Special handling for score_cols to support c(s1, s2)
+  sc_q <- rlang::enquo(score_cols)
+  sc_expr <- rlang::quo_get_expr(sc_q)
+  
+  if (is.call(sc_expr) && rlang::is_call(sc_expr, "c")) {
+      # Extract names from c(...) call
+      args <- rlang::call_args(sc_expr)
+      sc_cols <- tryCatch({
+          unname(purrr::map_chr(args, function(a) {
+              # Try to resolve each element in c()
+              res <- try(rlang::eval_tidy(a, q = rlang::quo_get_env(sc_q)), silent = TRUE)
+              if (!inherits(res, "try-error") && is.character(res) && length(res) == 1) return(res)
+              rlang::as_string(a)
+          }))
+      }, error = function(e) {
+          cli::cli_abort("{.arg score_cols} must be a character vector or symbols.")
+      })
+  } else {
+      # For single score_cols, we use resolve_hybrid but with score_cols specific error
+      sc_cols <- tryCatch({
+          resolve_hybrid(sc_q, "score_cols")
+      }, error = function(e) {
+          cli::cli_abort("{.arg score_cols} must be a character vector or symbols.")
+      })
+  }
+
+  risk_col <- NULL
+  if (!is.null(risk_level_col)) {
+      risk_col <- tryCatch(rlang::as_name(rlang::enquo(risk_level_col)), error = function(e) risk_level_col)
+  }
+
   # --- Start: Robust validation for user-friendliness ---
-  if (missing(applicant_id_col) || !is.character(applicant_id_col) || length(applicant_id_col) != 1) {
-    cli::cli_abort("{.arg applicant_id_col} must be a single string.")
+  if (is.null(id_col) || length(id_col) != 1) {
+    cli::cli_abort("{.arg applicant_id_col} must resolve to a single string.")
   }
-  if (missing(score_cols) || !is.character(score_cols) || length(score_cols) == 0) {
-    cli::cli_abort("{.arg score_cols} must be a character vector of at least one score column.")
+  if (is.null(sc_cols) || length(sc_cols) == 0) {
+    cli::cli_abort("{.arg score_cols} must resolve to a non-empty character vector.")
   }
-  if (missing(current_approval_col) || !is.character(current_approval_col) || length(current_approval_col) != 1) {
-    cli::cli_abort("{.arg current_approval_col} must be a single string.")
+  if (is.null(curr_app_col) || length(curr_app_col) != 1) {
+    cli::cli_abort("{.arg current_approval_col} must resolve to a single string.")
   }
-  if (missing(actual_default_col) || !is.character(actual_default_col) || length(actual_default_col) != 1) {
-    cli::cli_abort("{.arg actual_default_col} must be a single string.")
+  if (is.null(act_def_col) || length(act_def_col) != 1) {
+    cli::cli_abort("{.arg actual_default_col} must resolve to a single string.")
   }
   # --- End: Robust validation ---
 
   policy <- new_credit_policy(
-    applicant_id_col = applicant_id_col,
-    score_cols = score_cols,
-    current_approval_col = current_approval_col,
-    actual_default_col = actual_default_col,
-    risk_level_col = risk_level_col,
+    applicant_id_col = id_col,
+    score_cols = sc_cols,
+    current_approval_col = curr_app_col,
+    actual_default_col = act_def_col,
+    risk_level_col = risk_col,
     simulation_stages = simulation_stages,
     stress_scenarios = stress_scenarios
   )

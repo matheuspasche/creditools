@@ -9,8 +9,8 @@ summarize_results(results, by = NULL)
 \arguments{
 \item{results}{A \code{credit_sim_results} object returned by \code{run_simulation()}.}
 
-\item{by}{A character vector of column names to group the summary by, in
-addition to the default grouping by \code{scenario}.}
+\item{by}{Columns to group the summary by, in addition to the default grouping by \code{scenario}.
+(Uses \code{tidyselect} syntax).}
 }
 \value{
 A data frame (tibble) with summary statistics, including columns
@@ -39,8 +39,11 @@ my_policy <- credit_policy(
 # 2. Run simulation
 results <- run_simulation(data = sample_data, policy = my_policy)
 
-# 3. Summarize results by scenario and risk decile
-summarize_results(results, by = "new_score_decile")
+# 3. Summarize results by scenario and risk decile using tidyselect
+summarize_results(results, by = new_score_decile)
+
+# Or using unquoted helper
+summarize_results(results, by = starts_with("new_"))
 }
 \seealso{
 Other analysis: 

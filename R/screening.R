@@ -1,4 +1,4 @@
-#' High-Scale Risk Segmentation Screening (Furar a Folhinha)
+#' High-Scale Risk Tier Breakdown
 #'
 #' @description
 #' `screen_risk_segments()` identifying candidate variables that can further segment
@@ -7,7 +7,7 @@
 #' against a baseline grouping.
 #'
 #' @details
-#' ### High-Scale Screening (Furar a Folhinha)
+#' ### High-Scale Tier Breakdown
 #' This function identifies which variables can most effectively "break" or further refine
 #' existing risk groups. It is particularly useful for finding sub-segments (e.g., Rating 3.1, 3.2)
 #' that have significantly different default behaviors.
@@ -19,9 +19,9 @@
 #' sub-segments are robust and not just artifacts of a specific time period.
 #'
 #' @param data A data frame containing the historical data.
-#' @param base_risk_col Character. The name of the existing risk group/rating column.
+#' @param base_risk_col Column containing existing risk group/rating. (Uses \code{tidyselect} syntax).
 #' @param candidate_cols Columns to test for segmentation power. (Uses \code{tidyselect} syntax).
-#' @param default_col Character. The binary target column name (e.g., 0/1).
+#' @param default_col Binary target column name (e.g., 0/1). (Uses \code{tidyselect} syntax).
 #' @param n_bins Integer. Number of quantiles to use for discretizing candidate variables. Default is 10.
 #' @param method Character. The segmentation method: `"quantiles"` (default), `"ward"`, or `"iv"`.
 #' @param max_groups Integer. Maximum number of sub-segments to create per tier (only used if `method` is `"ward"` or `"iv"`). Default is `NULL`.
@@ -38,7 +38,7 @@
 #' }
 #'
 #' @importFrom dplyr group_by summarise mutate n arrange ntile across all_of filter bind_rows select
-#' @importFrom rlang sym .data
+#' @importFrom rlang sym .data enquo
 #' @importFrom purrr map_dfr
 #' @importFrom furrr future_map_dfr
 #' @importFrom tidyselect eval_select
@@ -50,15 +50,15 @@
 #' \donttest{
 #' data(applicants)
 #' # Create a base grouping first
-#' base_model <- find_risk_groups(applicants, "old_score", "defaulted", max_groups = 5)
+#' base_model <- find_risk_groups(applicants, old_score, defaulted, max_groups = 5)
 #' applicants$rating <- base_model$data$risk_rating
 #'
 #' # Screen for variables that can "break" these ratings using tidyselect
 #' screening <- screen_risk_segments(
 #'     data = applicants,
-#'     base_risk_col = "rating",
+#'     base_risk_col = rating,
 #'     candidate_cols = c(new_score, bureau_derogatory), # or everything(), starts_with(), etc.
-#'     default_col = "defaulted",
+#'     default_col = defaulted,
 #'     n_bins = 5,
 #'     .progress = TRUE
 #' )
@@ -79,13 +79,20 @@ screen_risk_segments <- function(data,
     method <- match.arg(method)
 
     # 1. Resolve Columns with Tidyselect
-    # We use enquo to capture the expression for candidate_cols
+    base_expr <- rlang::enquo(base_risk_col)
     candidate_expr <- rlang::enquo(candidate_cols)
+    default_expr <- rlang::enquo(default_col)
+
+    sel_base <- names(tidyselect::eval_select(base_expr, data))
     selected_vars <- tidyselect::eval_select(candidate_expr, data)
     actual_candidates <- unique(names(selected_vars))
+    sel_default <- names(tidyselect::eval_select(default_expr, data))
+
+    if (length(sel_base) != 1) cli::cli_abort("{.arg base_risk_col} must resolve to exactly one column.")
+    if (length(sel_default) != 1) cli::cli_abort("{.arg default_col} must resolve to exactly one column.")
 
     # Basic Validation
-    required_cols <- c(base_risk_col, default_col)
+    required_cols <- c(sel_base, sel_default)
     missing <- setdiff(required_cols, names(data))
     if (length(missing) > 0) {
         cli::cli_abort("Missing columns in data: {.field {missing}}")
@@ -101,8 +108,8 @@ screen_risk_segments <- function(data,
     # Pre-fetch vectors for speed and handle NAs in base/default once
     # We can't drop NAs for ALL candidates at once though (sparse data)
     # But we can at least have the base and default vectors ready
-    base_vec <- as.integer(as.factor(data[[base_risk_col]]))
-    default_vec <- as.integer(data[[default_col]])
+    base_vec <- as.integer(as.factor(data[[sel_base]]))
+    default_vec <- as.integer(data[[sel_default]])
 
     # 3. Process Variables in Batches
     # To save memory in parallel mode (multisession), we avoid sending thousands of large
@@ -253,7 +260,7 @@ screen_risk_segments <- function(data,
         metrics = all_metrics,
         recipes = all_recipes,
         metadata = list(
-            base_risk_col = base_risk_col,
+            base_risk_col = sel_base,
             n_bins = n_bins,
             method = method
         )

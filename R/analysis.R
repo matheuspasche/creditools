@@ -5,14 +5,16 @@
 #' volume and default rates, grouped by scenario and other optional variables.
 #'
 #' @param results A `credit_sim_results` object returned by `run_simulation()`.
-#' @param by A character vector of column names to group the summary by, in
-#'   addition to the default grouping by `scenario`.
+#' @param by Columns to group the summary by, in addition to the default grouping by `scenario`.
+#'   (Uses \code{tidyselect} syntax).
 #'
 #' @return A data frame (tibble) with summary statistics, including columns
 #'   for the grouping variables, `scenario`, `volume`, `total_approved`,
 #'   `overall_approval_rate`, and `avg_default_rate_approved`.
 #'
 #' @importFrom dplyr group_by across all_of summarise n
+#' @importFrom rlang enquo
+#' @importFrom tidyselect eval_select
 #' @family analysis
 #' @export
 #'
@@ -34,8 +36,11 @@
 #' # 2. Run simulation
 #' results <- run_simulation(data = sample_data, policy = my_policy)
 #'
-#' # 3. Summarize results by scenario and risk decile
-#' summarize_results(results, by = "new_score_decile")
+#' # 3. Summarize results by scenario and risk decile using tidyselect
+#' summarize_results(results, by = new_score_decile)
+#' 
+#' # Or using unquoted helper
+#' summarize_results(results, by = starts_with("new_"))
 summarize_results <- function(results, by = NULL) {
   if (!inherits(results, "credit_sim_results")) {
     cli::cli_abort("{.arg results} must be a {.cls credit_sim_results} object from {.fn run_simulation}.")
@@ -43,6 +48,11 @@ summarize_results <- function(results, by = NULL) {
 
   data <- results$data
   policy <- results$metadata$policy
+
+  # Resolve 'by' with tidyselect
+  by_expr <- rlang::enquo(by)
+  sel_by <- names(tidyselect::eval_select(by_expr, data))
+
   # A robust check for analytical: does new_approval contain fractions?
   is_analytical <- is.numeric(data$new_approval) &&
     (any(data$new_approval > 0 & data$new_approval < 1, na.rm = TRUE) ||
@@ -51,21 +61,11 @@ summarize_results <- function(results, by = NULL) {
   if (is.numeric(data$new_approval) && !is_analytical) {
     if (!is.null(results$metadata$method) && results$metadata$method == "analytical") {
       is_analytical <- TRUE
-    } else {
-      is_analytical <- TRUE
-    }
-  }
-
-  # Validate 'by' columns if provided
-  if (!is.null(by)) {
-    missing_cols <- setdiff(by, names(data))
-    if (length(missing_cols) > 0) {
-      cli::cli_abort("Grouping variable(s) not found in the data: {missing_cols}")
     }
   }
 
   # Always group by scenario, and add any other requested columns
-  grouping_vars <- c(by, "scenario")
+  grouping_vars <- c(sel_by, "scenario")
 
   if (!is_analytical) {
     summary <- data %>%
@@ -121,11 +121,11 @@ summarize_results <- function(results, by = NULL) {
 #' for each combination. The function intelligently modifies the policy based on
 #' the names of the parameters in `vary_params`:
 #'
-#' - A parameter named \var{score_name}_cutoff will create or modify a
+#' - A parameter named `score_name_cutoff` will create or modify a
 #'   \code{stage_cutoff} for that score.
 #' - A parameter named `aggravation_factor` will create or modify a
 #'   `stress_aggravation` scenario.
-#' - A parameter named \var{stage_name}_base_rate will dynamically update the
+#' - A parameter named `stage_name_base_rate` will dynamically update the
 #'   \code{base_rate} of an existing \code{stage_rate} matching that name.
 #'
 #' This allows for complex sensitivity analyses (e.g., creating an "efficient

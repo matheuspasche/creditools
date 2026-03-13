@@ -474,6 +474,7 @@ create_pareto_plot <- function(analysis_results) {
     ) +
     ggplot2::theme_minimal()
 }
+
 #' Find an equivalent policy based on a target metric
 #'
 #' @description
@@ -552,4 +553,62 @@ find_equivalent_policy <- function(tradeoff_results,
   }
 
   return(matches)
+}
+
+#' Calculate the Efficient Frontier for a Credit Policy
+#'
+#' @description
+#' A high-level wrapper that automates the process of finding optimal cutoffs
+#' and extracting the Pareto frontier. This is a convenience function that
+#' combines \code{find_optimal_cutoffs()} and \code{analyze_tradeoffs()}.
+#'
+#' @param data A data frame containing applicant data.
+#' @param config A base \code{credit_policy} object.
+#' @param score_col The score column to optimize. (Uses \code{tidyselect} syntax).
+#' @param ... Additional arguments passed to \code{find_optimal_cutoffs()}.
+#'
+#' @return A tibble representing the Pareto frontier (the "Efficient Frontier").
+#' @export
+#'
+#' @examples
+#' \donttest{
+#' data(applicants)
+#' base_policy <- credit_policy(
+#'   applicant_id_col = id,
+#'   score_cols = new_score,
+#'   current_approval_col = approved,
+#'   actual_default_col = defaulted
+#' )
+#'
+#' # Calculate frontier in one step
+#' frontier <- calculate_efficient_frontier(
+#'   data = applicants,
+#'   config = base_policy,
+#'   score_col = new_score,
+#'   cutoff_steps = 10,
+#'   target_default_rate = 0.12,
+#'   method = "analytical"
+#' )
+#'
+#' print(frontier)
+#' }
+calculate_efficient_frontier <- function(data, config, score_col, ...) {
+  # Resolve score column with tidyselect
+  sel_score <- names(tidyselect::eval_select(rlang::enquo(score_col), data))
+  if (length(sel_score) != 1) cli::cli_abort("{.arg score_col} must resolve to exactly 1 column.")
+
+  # Update config with the score
+  config$score_cols <- sel_score
+
+  # Find optimal cutoffs
+  raw_opt <- find_optimal_cutoffs(data, config, ...)
+
+  # Extract frontier
+  analysis <- analyze_tradeoffs(raw_opt)
+  df <- analysis$pareto_frontier
+
+  # Add model name for easier plotting/comparison
+  df$model <- sel_score
+
+  return(df)
 }

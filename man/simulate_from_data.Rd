@@ -21,17 +21,17 @@ simulate_from_data(
 \arguments{
 \item{data}{A data frame containing the historical applicant data.}
 
-\item{applicant_id_col}{Name of the column containing unique applicant IDs.}
+\item{applicant_id_col}{Column containing unique applicant IDs. (Uses \code{tidyselect} syntax).}
 
-\item{current_score_col}{Name of the column containing the current historical score.}
+\item{current_score_col}{Column containing the current historical score. (Uses \code{tidyselect} syntax).}
 
-\item{new_score_col}{Name of the column containing the challenger score.}
+\item{new_score_col}{Column containing the challenger score. (Uses \code{tidyselect} syntax).}
 
-\item{historical_approval_col}{Name of the column with the binary approval flag (1 = Approved, 0 = Rejected).}
+\item{historical_approval_col}{Column with the binary approval flag (1 = Approved, 0 = Rejected). (Uses \code{tidyselect} syntax).}
 
-\item{historical_hired_col}{Name of the column with the binary hired/conversion flag (1 = Hired, 0 = Lost).}
+\item{historical_hired_col}{Column with the binary hired/conversion flag (1 = Hired, 0 = Lost). (Uses \code{tidyselect} syntax).}
 
-\item{actual_default_col}{Name of the column with the true default flag for hired customers.}
+\item{actual_default_col}{Column with the true default flag for hired customers. (Uses \code{tidyselect} syntax).}
 
 \item{new_score_cutoff}{The threshold for the challenger score to approve an applicant.}
 
@@ -40,7 +40,7 @@ simulate_from_data(
 \item{method}{The simulation method: \code{"stochastic"} (default) for row-by-row sampling
 or \code{"analytical"} for expected value calculation (reweighting).}
 
-\item{time_col}{Optional. Name of the vintage/date column to ensure temporal stability in Risk Groups.}
+\item{time_col}{Optional. Name of the vintage/date column to ensure temporal stability in Risk Groups. (Uses \code{tidyselect} syntax).}
 }
 \value{
 A list containing the resulting metrics, the generated risk groups, and the appended dataset.
@@ -50,7 +50,8 @@ A high-level analytical wrapper designed for Credit Analysts.
 Bypasses the complex simulation engine and directly computes
 volumetric trade-offs, approval funnel metrics, and
 stressed default rates based on Ward Risk Clustering.
-
+}
+\details{
 Internally, it mirrors the core engine semantics:
 \itemize{
 \item classifies applicants into \code{keep_in}, \code{swap_in}, \code{swap_out}, \code{keep_out}
@@ -71,8 +72,8 @@ defaulted vs paid) are already present historically.
 data <- generate_sample_data(n_applicants = 1000)
 results <- simulate_from_data(
     data = data,
-    current_score_col = "old_score", # Match generate_sample_data
-    new_score_col = "new_score",
+    current_score_col = old_score, # Use tidyselect syntax
+    new_score_col = new_score,
     new_score_cutoff = 600,
     aggravation_factor = 1.3
 )

@@ -247,6 +247,8 @@ validate_simulation_inputs <- function(data, policy) {
   }
 
   # Check that all required columns exist in data
+  # Since we've already tried to resolve names in credit_policy (as strings),
+  # we just check existence here.
   required_cols <- c(
     policy$applicant_id_col,
     policy$current_approval_col,
@@ -255,12 +257,12 @@ validate_simulation_inputs <- function(data, policy) {
   )
 
   # Check columns inside stages
-  stage_cols <- .parallel_map(policy$simulation_stages, function(s) {
+  stage_cols <- purrr::map(policy$simulation_stages, function(s) {
     if (s$type == "cutoff") {
       return(names(s$cutoffs))
     }
     return(NULL)
-  }, .parallel = FALSE) %>% unlist()
+  }) %>% unlist()
 
   required_cols <- unique(c(required_cols, stage_cols))
   missing_cols <- setdiff(required_cols, names(data))
@@ -417,9 +419,9 @@ calc_prob_aggravation <- function(data, policy, scenario_obj) {
   if (!is.null(by_col) && by_col %in% names(data)) {
     # Calculate historical PD per segment
     historical_pds <- data %>%
-      dplyr::filter(.data[[policy$current_approval_col]] == 1) %>%
-      dplyr::group_by(.data[[by_col]]) %>%
-      dplyr::summarise(hist_pd = mean(.data[[policy$actual_default_col]], na.rm = TRUE), .groups = "drop")
+      dplyr::filter(!!rlang::sym(policy$current_approval_col) == 1) %>%
+      dplyr::group_by(!!rlang::sym(by_col)) %>%
+      dplyr::summarise(hist_pd = mean(!!rlang::sym(policy$actual_default_col), na.rm = TRUE), .groups = "drop")
 
     # Map back to swap-ins
     res <- swap_ins %>%
@@ -428,11 +430,13 @@ calc_prob_aggravation <- function(data, policy, scenario_obj) {
       dplyr::pull("stressed_pd")
 
     # Fill NAs with global historical PD
-    global_pd <- mean(data[[policy$actual_default_col]][data[[policy$current_approval_col]] == 1], na.rm = TRUE)
+    global_pd_mask <- data[[policy$current_approval_col]] == 1
+    global_pd <- mean(data[[policy$actual_default_col]][global_pd_mask], na.rm = TRUE)
     res[is.na(res)] <- pmin(global_pd * factor_val, 1)
   } else {
     # Use global historical PD
-    global_pd <- mean(data[[policy$actual_default_col]][data[[policy$current_approval_col]] == 1], na.rm = TRUE)
+    global_pd_mask <- data[[policy$current_approval_col]] == 1
+    global_pd <- mean(data[[policy$actual_default_col]][global_pd_mask], na.rm = TRUE)
     res <- rep(pmin(global_pd * factor_val, 1), nrow(swap_ins))
   }
 

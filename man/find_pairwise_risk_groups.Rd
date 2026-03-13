@@ -18,13 +18,13 @@ find_pairwise_risk_groups(
 \arguments{
 \item{data}{A data frame containing the historical applicant data.}
 
-\item{primary_score}{A character string. The baseline/legacy score.}
+\item{primary_score}{Primary/legacy score column. (Uses \code{tidyselect} syntax).}
 
-\item{challenger_scores}{A character vector containing the names of the challenger score columns.}
+\item{challenger_scores}{Challenger score columns. (Uses \code{tidyselect} syntax).}
 
-\item{default_col}{A character string with the column name indicating the observed default (0 or 1).}
+\item{default_col}{Column name indicating the observed default (0 or 1). (Uses \code{tidyselect} syntax).}
 
-\item{time_col}{A character string with the column name representing the vintage/time cohort.}
+\item{time_col}{Column name representing the vintage/time cohort. (Uses \code{tidyselect} syntax).}
 
 \item{quiet}{Whether to suppress progress and status messages. Default is FALSE.}
 
@@ -47,10 +47,10 @@ the heavy algorithmic lifting natively.
 data(applicants)
 results <- find_pairwise_risk_groups(
     data = applicants,
-    primary_score = "old_score",
-    challenger_scores = "new_score",
-    default_col = "defaulted",
-    time_col = "vintage",
+    primary_score = old_score,
+    challenger_scores = starts_with("new_"),
+    default_col = defaulted,
+    time_col = vintage,
     max_groups = 3
 )
 }

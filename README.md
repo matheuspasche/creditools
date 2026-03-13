@@ -15,6 +15,13 @@ infrastructure to simulate, optimize, and validate complex credit
 policies, moving beyond static backtesting into the realm of
 **Counterfactual Policy Simulation**.
 
+## Installation
+
+``` r
+# install.packages("devtools")
+devtools::install_github("matheuspasche/creditools")
+```
+
 In modern credit risk management, the most significant challenge is
 “Selection Bias”: you only know the performance of applicants you have
 already **approved**. When you evaluate a new policy, `creditools` fills
@@ -40,8 +47,8 @@ data(applicants)
 # Run a deterministic analytical simulation with 1.5x stress
 results <- simulate_from_data(
   data = applicants,
-  current_score_col = "old_score",
-  new_score_col     = "new_score",
+  current_score_col = old_score, # Uses tidyselect!
+  new_score_col     = new_score,
   new_score_cutoff  = 640,
   aggravation_factor = 1.5,
   method = "analytical"
@@ -234,33 +241,33 @@ Volume** for the same **Portfolio Bad Rate**.
 
 `creditools` can analyze hundreds of score/cutoff combinations at once
 to map their “Efficient Frontier.” Below, we compare the frontiers of
-the legacy model versus the new ML model, restricted to a realistic
-**0-70% Approval Rate** for professional aesthetics.
+the legacy model versus the new ML model using the
+`calculate_efficient_frontier()` wrapper.
 
 ``` r
 # Generate a larger synthetic population (50,000) for high-resolution curves
 sim_data <- generate_sample_data(n_applicants = 50000, seed = 123)
 
-get_frontier_data <- function(score_col) {
-  opt <- find_optimal_cutoffs(
-    data = sim_data,
-    config = credit_policy(
-      applicant_id_col = "id",
-      score_cols = score_col,
-      current_approval_col = "approved",
-      actual_default_col = "defaulted"
-    ) %>% add_stress_scenario(stress_aggravation(factor = 1.5)),
-    cutoff_steps = 30,
-    target_default_rate = 0.12,
-    method = "analytical"
-  )
-  analysis <- analyze_tradeoffs(opt)
-  df <- analysis$pareto_frontier
-  df$model <- score_col
-  return(df)
-}
+# Define base policy with 1.5x stress
+base_policy <- credit_policy(
+  applicant_id_col = id,
+  score_cols = old_score,
+  current_approval_col = approved,
+  actual_default_col = defaulted
+) %>% add_stress_scenario(stress_aggravation(factor = 1.5))
 
-comparison_df <- map_dfr(c("old_score", "new_score"), get_frontier_data)
+# Calculate frontiers using the high-level wrapper
+old_frontier <- calculate_efficient_frontier(
+  sim_data, base_policy, old_score,
+  cutoff_steps = 30, target_default_rate = 0.12, method = "analytical"
+)
+
+new_frontier <- calculate_efficient_frontier(
+  sim_data, base_policy, new_score,
+  cutoff_steps = 30, target_default_rate = 0.12, method = "analytical"
+)
+
+comparison_df <- bind_rows(old_frontier, new_frontier)
 
 ggplot(comparison_df, aes(x = overall_approval_rate, y = overall_default_rate, color = model)) +
   geom_line(size = 1.5, alpha = 0.8) +
@@ -428,7 +435,7 @@ centroid (mean default rate). This minimizes the intra-cluster variance,
 while `creditools` ensures that the final $`N`$ groups follow a strictly
 increasing risk order, preventing “noisy” reversals in the Risk Matrix.
 
-\### The Temporal Stability Engine (“Heart of Credit”)
+### The Temporal Stability Engine (“Heart of Credit”)
 
 In credit risk, a model that is accurate today but flips its risk
 ordering tomorrow is dangerous. `creditools` (v0.5.0+) introduces the
@@ -444,14 +451,14 @@ ordering tomorrow is dangerous. `creditools` (v0.5.0+) introduces the
     periods.
 
 ``` r
-# Enable temporal stability by passing the vintage column
-risk_groups <- find_risk_groups(
-  data = sim_data,
-  score_cols = "new_score",
-  default_col = "defaulted",
-  time_col = "vintage",   # The Engine of Stability
-  max_groups = 5
-)
+ # Enable temporal stability by passing the vintage column
+ risk_groups <- find_risk_groups(
+   data = sim_data,
+   score_cols = new_score,
+   default_col = defaulted,
+   time_col = vintage,   # The Engine of Stability
+   max_groups = 5
+ )
 ```
 
 ------------------------------------------------------------------------
@@ -460,9 +467,9 @@ risk_groups <- find_risk_groups(
 # Create 20 micro-bins and merge them into 5 stable, monotonic Risk Ratings
 risk_groups <- find_risk_groups(
   data = sim_data %>% filter(approved == 1),
-  score_cols = "new_score",
-  default_col = "defaulted",
-  time_col = "vintage",
+  score_cols = new_score,
+  default_col = defaulted,
+  time_col = vintage,
   bins = 20,
   max_groups = 5,
   min_vol_ratio = 0.02
@@ -476,7 +483,7 @@ plot(risk_groups)
 
 ------------------------------------------------------------------------
 
-### 5. High-Scale Risk Screening (“Furar a Folhinha”)
+### 5. High-Scale Risk Tier Breakdown
 
 In portfolios with thousands of candidate variables, identifying which
 ones provide incremental discrimination within an existing rating is a
@@ -492,25 +499,194 @@ existing risk tiers.
 rating_model <- find_risk_groups(sim_data, "old_score", "defaulted", bins = 10, quiet = TRUE)
 
 # 2. Screen for variables that can "break" these ratings
-# This engine can handle 5000+ variables and millions of rows in seconds
 screening_res <- screen_risk_segments(
   data = rating_model$data,
-  base_risk_col = "risk_rating",
+  base_risk_col = risk_rating,
   candidate_cols = c(new_score, bureau_derogatory, age),
-  default_col = "defaulted"
+  default_col = defaulted
 )
 
-# Identify top variables to "punch through" for the middle rating (e.g. 5)
-screening_res$metrics %>% 
-  filter(risk_group == 5) %>% 
-  arrange(desc(iv))
-#> # A tibble: 3 x 7
-#>   variable          risk_group      iv pd_min pd_max pd_spread tier_vol
-#>   <chr>                  <int>   <dbl>  <dbl>  <dbl>     <dbl>    <dbl>
-#> 1 new_score                  5 0.0340   0.074  0.124    0.0498     5006
-#> 2 bureau_derogatory          5 0.0202   0.082  0.120    0.0378     5006
-#> 3 age                        5 0.00524  0.092  0.116    0.0238     5006
+# Identify top variables to further segment the middle rating (e.g. 5)
+screening_res$metrics %>%
+  filter(risk_group == 5) %>%
+  arrange(desc(iv)) %>%
+  slice(1:5) %>%
+  kbl(caption = "Tier Breakdown Analysis: Top Discriminators for Rating 5") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
+
+<table class="table table-striped table-hover" style="width: auto !important; margin-left: auto; margin-right: auto;">
+
+<caption>
+
+Tier Breakdown Analysis: Top Discriminators for Rating 5
+</caption>
+
+<thead>
+
+<tr>
+
+<th style="text-align:left;">
+
+variable
+</th>
+
+<th style="text-align:right;">
+
+risk_group
+</th>
+
+<th style="text-align:right;">
+
+iv
+</th>
+
+<th style="text-align:right;">
+
+pd_min
+</th>
+
+<th style="text-align:right;">
+
+pd_max
+</th>
+
+<th style="text-align:right;">
+
+pd_spread
+</th>
+
+<th style="text-align:right;">
+
+tier_vol
+</th>
+
+</tr>
+
+</thead>
+
+<tbody>
+
+<tr>
+
+<td style="text-align:left;">
+
+new_score
+</td>
+
+<td style="text-align:right;">
+
+5
+</td>
+
+<td style="text-align:right;">
+
+0.0340023
+</td>
+
+<td style="text-align:right;">
+
+0.074
+</td>
+
+<td style="text-align:right;">
+
+0.1237525
+</td>
+
+<td style="text-align:right;">
+
+0.0497525
+</td>
+
+<td style="text-align:right;">
+
+5006
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+bureau_derogatory
+</td>
+
+<td style="text-align:right;">
+
+5
+</td>
+
+<td style="text-align:right;">
+
+0.0202042
+</td>
+
+<td style="text-align:right;">
+
+0.082
+</td>
+
+<td style="text-align:right;">
+
+0.1197605
+</td>
+
+<td style="text-align:right;">
+
+0.0377605
+</td>
+
+<td style="text-align:right;">
+
+5006
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+age
+</td>
+
+<td style="text-align:right;">
+
+5
+</td>
+
+<td style="text-align:right;">
+
+0.0052413
+</td>
+
+<td style="text-align:right;">
+
+0.092
+</td>
+
+<td style="text-align:right;">
+
+0.1157685
+</td>
+
+<td style="text-align:right;">
+
+0.0237685
+</td>
+
+<td style="text-align:right;">
+
+5006
+</td>
+
+</tr>
+
+</tbody>
+
+</table>
 
 ### 6. The “Recipe” Predict Workflow
 
@@ -527,23 +703,1402 @@ oot_with_rating <- predict(rating_model, oot_data)
 # Materialize a specific sub-segmentation chosen during screening
 oot_final <- predict(screening_res, oot_with_rating, variable = "new_score")
 
-table(oot_final$risk_rating_segmented)
-#> 
-#> 1.10  1.3  1.4  1.5  1.6  1.7  1.8  1.9 10.1 10.2 10.3 10.4 10.5 10.6 10.7 10.8 
-#>  241    5    8    8   18   38   75  107  216   95   70   51   26   13    6    4 
-#> 10.9  2.1 2.10  2.2  2.3  2.4  2.5  2.6  2.7  2.8  2.9  3.1 3.10  3.2  3.3  3.4 
-#>    1    2  102    3   13   16   37   49   84   98  118    7   67   15   21   39 
-#>  3.5  3.6  3.7  3.8  3.9  4.1 4.10  4.2  4.3  4.4  4.5  4.6  4.7  4.8  4.9  5.1 
-#>   47   65   74   84   80   11   53   16   35   58   60   73   64   65   63   11 
-#> 5.10  5.2  5.3  5.4  5.5  5.6  5.7  5.8  5.9  6.1 6.10  6.2  6.3  6.4  6.5  6.6 
-#>   20   33   52   55   59   59   76   58   49   33   13   52   66   65   74   63 
-#>  6.7  6.8  6.9  7.1 7.10  7.2  7.3  7.4  7.5  7.6  7.7  7.8  7.9  8.1 8.10  8.2 
-#>   64   56   32   36    7   65   62   89   74   64   44   33   25   73    4   76 
-#>  8.3  8.4  8.5  8.6  8.7  8.8  8.9  9.1 9.10  9.2  9.3  9.4  9.5  9.6  9.7  9.8 
-#>   72   68   45   47   40   23   17  124    1  117  100   85   54   33   13   12 
-#>  9.9 
-#>    6
+# Distribution of the new segmented rating
+oot_final %>%
+  count(risk_rating_segmented) %>%
+  rename(Rating = risk_rating_segmented, Volume = n) %>%
+  kbl(caption = "OOT Deployment: Segmented Rating Distribution") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
+
+<table class="table table-striped table-hover" style="width: auto !important; margin-left: auto; margin-right: auto;">
+
+<caption>
+
+OOT Deployment: Segmented Rating Distribution
+</caption>
+
+<thead>
+
+<tr>
+
+<th style="text-align:left;">
+
+Rating
+</th>
+
+<th style="text-align:right;">
+
+Volume
+</th>
+
+</tr>
+
+</thead>
+
+<tbody>
+
+<tr>
+
+<td style="text-align:left;">
+
+1.10
+</td>
+
+<td style="text-align:right;">
+
+241
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+1.3
+</td>
+
+<td style="text-align:right;">
+
+5
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+1.4
+</td>
+
+<td style="text-align:right;">
+
+8
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+1.5
+</td>
+
+<td style="text-align:right;">
+
+8
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+1.6
+</td>
+
+<td style="text-align:right;">
+
+18
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+1.7
+</td>
+
+<td style="text-align:right;">
+
+38
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+1.8
+</td>
+
+<td style="text-align:right;">
+
+75
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+1.9
+</td>
+
+<td style="text-align:right;">
+
+107
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+10.1
+</td>
+
+<td style="text-align:right;">
+
+216
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+10.2
+</td>
+
+<td style="text-align:right;">
+
+95
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+10.3
+</td>
+
+<td style="text-align:right;">
+
+70
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+10.4
+</td>
+
+<td style="text-align:right;">
+
+51
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+10.5
+</td>
+
+<td style="text-align:right;">
+
+26
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+10.6
+</td>
+
+<td style="text-align:right;">
+
+13
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+10.7
+</td>
+
+<td style="text-align:right;">
+
+6
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+10.8
+</td>
+
+<td style="text-align:right;">
+
+4
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+10.9
+</td>
+
+<td style="text-align:right;">
+
+1
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+2.1
+</td>
+
+<td style="text-align:right;">
+
+2
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+2.10
+</td>
+
+<td style="text-align:right;">
+
+102
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+2.2
+</td>
+
+<td style="text-align:right;">
+
+3
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+2.3
+</td>
+
+<td style="text-align:right;">
+
+13
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+2.4
+</td>
+
+<td style="text-align:right;">
+
+16
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+2.5
+</td>
+
+<td style="text-align:right;">
+
+37
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+2.6
+</td>
+
+<td style="text-align:right;">
+
+49
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+2.7
+</td>
+
+<td style="text-align:right;">
+
+84
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+2.8
+</td>
+
+<td style="text-align:right;">
+
+98
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+2.9
+</td>
+
+<td style="text-align:right;">
+
+118
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+3.1
+</td>
+
+<td style="text-align:right;">
+
+7
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+3.10
+</td>
+
+<td style="text-align:right;">
+
+67
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+3.2
+</td>
+
+<td style="text-align:right;">
+
+15
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+3.3
+</td>
+
+<td style="text-align:right;">
+
+21
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+3.4
+</td>
+
+<td style="text-align:right;">
+
+39
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+3.5
+</td>
+
+<td style="text-align:right;">
+
+47
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+3.6
+</td>
+
+<td style="text-align:right;">
+
+65
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+3.7
+</td>
+
+<td style="text-align:right;">
+
+74
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+3.8
+</td>
+
+<td style="text-align:right;">
+
+84
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+3.9
+</td>
+
+<td style="text-align:right;">
+
+80
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+4.1
+</td>
+
+<td style="text-align:right;">
+
+11
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+4.10
+</td>
+
+<td style="text-align:right;">
+
+53
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+4.2
+</td>
+
+<td style="text-align:right;">
+
+16
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+4.3
+</td>
+
+<td style="text-align:right;">
+
+35
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+4.4
+</td>
+
+<td style="text-align:right;">
+
+58
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+4.5
+</td>
+
+<td style="text-align:right;">
+
+60
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+4.6
+</td>
+
+<td style="text-align:right;">
+
+73
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+4.7
+</td>
+
+<td style="text-align:right;">
+
+64
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+4.8
+</td>
+
+<td style="text-align:right;">
+
+65
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+4.9
+</td>
+
+<td style="text-align:right;">
+
+63
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+5.1
+</td>
+
+<td style="text-align:right;">
+
+11
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+5.10
+</td>
+
+<td style="text-align:right;">
+
+20
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+5.2
+</td>
+
+<td style="text-align:right;">
+
+33
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+5.3
+</td>
+
+<td style="text-align:right;">
+
+52
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+5.4
+</td>
+
+<td style="text-align:right;">
+
+55
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+5.5
+</td>
+
+<td style="text-align:right;">
+
+59
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+5.6
+</td>
+
+<td style="text-align:right;">
+
+59
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+5.7
+</td>
+
+<td style="text-align:right;">
+
+76
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+5.8
+</td>
+
+<td style="text-align:right;">
+
+58
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+5.9
+</td>
+
+<td style="text-align:right;">
+
+49
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+6.1
+</td>
+
+<td style="text-align:right;">
+
+33
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+6.10
+</td>
+
+<td style="text-align:right;">
+
+13
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+6.2
+</td>
+
+<td style="text-align:right;">
+
+52
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+6.3
+</td>
+
+<td style="text-align:right;">
+
+66
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+6.4
+</td>
+
+<td style="text-align:right;">
+
+65
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+6.5
+</td>
+
+<td style="text-align:right;">
+
+74
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+6.6
+</td>
+
+<td style="text-align:right;">
+
+63
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+6.7
+</td>
+
+<td style="text-align:right;">
+
+64
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+6.8
+</td>
+
+<td style="text-align:right;">
+
+56
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+6.9
+</td>
+
+<td style="text-align:right;">
+
+32
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+7.1
+</td>
+
+<td style="text-align:right;">
+
+36
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+7.10
+</td>
+
+<td style="text-align:right;">
+
+7
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+7.2
+</td>
+
+<td style="text-align:right;">
+
+65
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+7.3
+</td>
+
+<td style="text-align:right;">
+
+62
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+7.4
+</td>
+
+<td style="text-align:right;">
+
+89
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+7.5
+</td>
+
+<td style="text-align:right;">
+
+74
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+7.6
+</td>
+
+<td style="text-align:right;">
+
+64
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+7.7
+</td>
+
+<td style="text-align:right;">
+
+44
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+7.8
+</td>
+
+<td style="text-align:right;">
+
+33
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+7.9
+</td>
+
+<td style="text-align:right;">
+
+25
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+8.1
+</td>
+
+<td style="text-align:right;">
+
+73
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+8.10
+</td>
+
+<td style="text-align:right;">
+
+4
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+8.2
+</td>
+
+<td style="text-align:right;">
+
+76
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+8.3
+</td>
+
+<td style="text-align:right;">
+
+72
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+8.4
+</td>
+
+<td style="text-align:right;">
+
+68
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+8.5
+</td>
+
+<td style="text-align:right;">
+
+45
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+8.6
+</td>
+
+<td style="text-align:right;">
+
+47
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+8.7
+</td>
+
+<td style="text-align:right;">
+
+40
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+8.8
+</td>
+
+<td style="text-align:right;">
+
+23
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+8.9
+</td>
+
+<td style="text-align:right;">
+
+17
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+9.1
+</td>
+
+<td style="text-align:right;">
+
+124
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+9.10
+</td>
+
+<td style="text-align:right;">
+
+1
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+9.2
+</td>
+
+<td style="text-align:right;">
+
+117
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+9.3
+</td>
+
+<td style="text-align:right;">
+
+100
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+9.4
+</td>
+
+<td style="text-align:right;">
+
+85
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+9.5
+</td>
+
+<td style="text-align:right;">
+
+54
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+9.6
+</td>
+
+<td style="text-align:right;">
+
+33
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+9.7
+</td>
+
+<td style="text-align:right;">
+
+13
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+9.8
+</td>
+
+<td style="text-align:right;">
+
+12
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+9.9
+</td>
+
+<td style="text-align:right;">
+
+6
+</td>
+
+</tr>
+
+</tbody>
+
+</table>
 
 ------------------------------------------------------------------------
 
@@ -553,17 +2108,9 @@ table(oot_final$risk_rating_segmented)
 Analysis**: Evaluate hundreds of scores and cutoff combinations
 simultaneously. - **Hierarchical Matrixing**: Generate stable, monotonic
 Risk Matrices (RBP) using Ward or IV-based Rcpp engines. - **High-Scale
-Screening**: “Furar a Folhinha” with thousands of variables and
-**model-like Predict API**. - **Governance**: A deterministic,
-reproducible framework for Justification and Model Transition
-documentation.
-
-## Installation
-
-``` r
-# install.packages("devtools")
-devtools::install_github("matheuspasche/creditools")
-```
+Screening**: Screen thousands of variables with **model-like Predict
+API**. - **Governance**: A deterministic, reproducible framework for
+Justification and Model Transition documentation.
 
 ## Documentation
 

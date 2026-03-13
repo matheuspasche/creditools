@@ -31,6 +31,13 @@ library(scales)
 
 **creditools** is a professional R framework designed for Credit Risk Strategy and Decision Science. It provides the mathematical infrastructure to simulate, optimize, and validate complex credit policies, moving beyond static backtesting into the realm of **Counterfactual Policy Simulation**.
 
+## Installation
+
+``` r
+# install.packages("devtools")
+devtools::install_github("matheuspasche/creditools")
+```
+
 In modern credit risk management, the most significant challenge is "Selection Bias": you only know the performance of applicants you have already **approved**. When you evaluate a new policy, `creditools` fills this gap by modeling "Swap-Ins" (the rejected who would be approved) and "Swap-Outs" (the approved who would now be rejected).
 
 ## Technical Workflow: A Step-by-Step Guide
@@ -48,8 +55,8 @@ data(applicants)
 # Run a deterministic analytical simulation with 1.5x stress
 results <- simulate_from_data(
   data = applicants,
-  current_score_col = "old_score",
-  new_score_col     = "new_score",
+  current_score_col = old_score, # Uses tidyselect!
+  new_score_col     = new_score,
   new_score_cutoff  = 640,
   aggravation_factor = 1.5,
   method = "analytical"
@@ -70,34 +77,34 @@ results$summary %>%
 
 ### 2. Multi-Model Optimization (The Efficient Frontier)
 
-Choosing a model based on Gini or AUC is insufficient for business planning. You need to know which model provides the most **Approval Volume** for the same **Portfolio Bad Rate**. 
+Choosing a model based on Gini or AUC is insufficient for business planning. You need to know which model provides the most **Approval Volume** for the same **Portfolio Bad Rate**.
 
-`creditools` can analyze hundreds of score/cutoff combinations at once to map their "Efficient Frontier." Below, we compare the frontiers of the legacy model versus the new ML model, restricted to a realistic **0-70% Approval Rate** for professional aesthetics.
+`creditools` can analyze hundreds of score/cutoff combinations at once to map their "Efficient Frontier." Below, we compare the frontiers of the legacy model versus the new ML model using the `calculate_efficient_frontier()` wrapper.
 
 ```{r comparison-plot}
 # Generate a larger synthetic population (50,000) for high-resolution curves
 sim_data <- generate_sample_data(n_applicants = 50000, seed = 123)
 
-get_frontier_data <- function(score_col) {
-  opt <- find_optimal_cutoffs(
-    data = sim_data,
-    config = credit_policy(
-      applicant_id_col = "id",
-      score_cols = score_col,
-      current_approval_col = "approved",
-      actual_default_col = "defaulted"
-    ) %>% add_stress_scenario(stress_aggravation(factor = 1.5)),
-    cutoff_steps = 30,
-    target_default_rate = 0.12,
-    method = "analytical"
-  )
-  analysis <- analyze_tradeoffs(opt)
-  df <- analysis$pareto_frontier
-  df$model <- score_col
-  return(df)
-}
+# Define base policy with 1.5x stress
+base_policy <- credit_policy(
+  applicant_id_col = id,
+  score_cols = old_score,
+  current_approval_col = approved,
+  actual_default_col = defaulted
+) %>% add_stress_scenario(stress_aggravation(factor = 1.5))
 
-comparison_df <- map_dfr(c("old_score", "new_score"), get_frontier_data)
+# Calculate frontiers using the high-level wrapper
+old_frontier <- calculate_efficient_frontier(
+  sim_data, base_policy, old_score,
+  cutoff_steps = 30, target_default_rate = 0.12, method = "analytical"
+)
+
+new_frontier <- calculate_efficient_frontier(
+  sim_data, base_policy, new_score,
+  cutoff_steps = 30, target_default_rate = 0.12, method = "analytical"
+)
+
+comparison_df <- bind_rows(old_frontier, new_frontier)
 
 ggplot(comparison_df, aes(x = overall_approval_rate, y = overall_default_rate, color = model)) +
   geom_line(size = 1.5, alpha = 0.8) +
@@ -162,35 +169,35 @@ The merging process minimizes the increase in the **Expected Sum of Squares (ESS
 $$ d_{ij} = \frac{n_i n_j}{n_i + n_j} || \bar{x}_i - \bar{x}_j ||^2 $$
 
 Where $n_i$ is the volume in cluster $i$ and $\bar{x}_i$ is the centroid (mean default rate). This minimizes the intra-cluster variance, while `creditools` ensures that the final $N$ groups follow a strictly increasing risk order, preventing "noisy" reversals in the Risk Matrix.
- 
- ### The Temporal Stability Engine ("Heart of Credit")
- 
- In credit risk, a model that is accurate today but flips its risk ordering tomorrow is dangerous. `creditools` (v0.5.0+) introduces the **Temporal Stability Engine**:
- 
- 1.  **Longitudinal Centroids**: Clustering engines (Ward/IV) work in a longitudinal space, treating each potential group as a vector of PDs across vintages.
- 2.  **Non-Crossing Constraint**: Strictly enforces that Group $i$ must have a lower PD than Group $i+1$ across historical cohorts.
- 3.  **Cross-Vintage Optimization**: Minimizes PD variance across time windows, ensuring that Rating 1 is always the safest, even in crisis periods.
- 
- ```r
+
+### The Temporal Stability Engine ("Heart of Credit")
+
+In credit risk, a model that is accurate today but flips its risk ordering tomorrow is dangerous. `creditools` (v0.5.0+) introduces the **Temporal Stability Engine**:
+
+1.  **Longitudinal Centroids**: Clustering engines (Ward/IV) work in a longitudinal space, treating each potential group as a vector of PDs across vintages.
+2.  **Non-Crossing Constraint**: Strictly enforces that Group $i$ must have a lower PD than Group $i+1$ across historical cohorts.
+3.  **Cross-Vintage Optimization**: Minimizes PD variance across time windows, ensuring that Rating 1 is always the safest, even in crisis periods.
+
+```r
  # Enable temporal stability by passing the vintage column
  risk_groups <- find_risk_groups(
    data = sim_data,
-   score_cols = "new_score",
-   default_col = "defaulted",
-   time_col = "vintage",   # The Engine of Stability
+   score_cols = new_score,
+   default_col = defaulted,
+   time_col = vintage,   # The Engine of Stability
    max_groups = 5
  )
  ```
- 
- ---
+
+---
 
 ```{r grouping}
 # Create 20 micro-bins and merge them into 5 stable, monotonic Risk Ratings
 risk_groups <- find_risk_groups(
   data = sim_data %>% filter(approved == 1),
-  score_cols = "new_score",
-  default_col = "defaulted",
-  time_col = "vintage",
+  score_cols = new_score,
+  default_col = defaulted,
+  time_col = vintage,
   bins = 20,
   max_groups = 5,
   min_vol_ratio = 0.02
@@ -202,9 +209,9 @@ plot(risk_groups)
 
 ---
 
-### 5. High-Scale Risk Screening ("Furar a Folhinha")
+### 5. High-Scale Risk Tier Breakdown
 
-In portfolios with thousands of candidate variables, identifying which ones provide incremental discrimination within an existing rating is a massive computational task. 
+In portfolios with thousands of candidate variables, identifying which ones provide incremental discrimination within an existing rating is a massive computational task.
 
 `creditools` provides `screen_risk_segments()`, a high-performance screening engine that uses a **C++ kernel** to evaluate IV (Information Value) and PD Spread across candidate variables for each of your existing risk tiers.
 
@@ -213,18 +220,20 @@ In portfolios with thousands of candidate variables, identifying which ones prov
 rating_model <- find_risk_groups(sim_data, "old_score", "defaulted", bins = 10, quiet = TRUE)
 
 # 2. Screen for variables that can "break" these ratings
-# This engine can handle 5000+ variables and millions of rows in seconds
 screening_res <- screen_risk_segments(
   data = rating_model$data,
-  base_risk_col = "risk_rating",
+  base_risk_col = risk_rating,
   candidate_cols = c(new_score, bureau_derogatory, age),
-  default_col = "defaulted"
+  default_col = defaulted
 )
 
-# Identify top variables to "punch through" for the middle rating (e.g. 5)
-screening_res$metrics %>% 
-  filter(risk_group == 5) %>% 
-  arrange(desc(iv))
+# Identify top variables to further segment the middle rating (e.g. 5)
+screening_res$metrics %>%
+  filter(risk_group == 5) %>%
+  arrange(desc(iv)) %>%
+  slice(1:5) %>%
+  kbl(caption = "Tier Breakdown Analysis: Top Discriminators for Rating 5") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
 
 ### 6. The "Recipe" Predict Workflow
@@ -239,7 +248,12 @@ oot_with_rating <- predict(rating_model, oot_data)
 # Materialize a specific sub-segmentation chosen during screening
 oot_final <- predict(screening_res, oot_with_rating, variable = "new_score")
 
-table(oot_final$risk_rating_segmented)
+# Distribution of the new segmented rating
+oot_final %>%
+  count(risk_rating_segmented) %>%
+  rename(Rating = risk_rating_segmented, Volume = n) %>%
+  kbl(caption = "OOT Deployment: Segmented Rating Distribution") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
 
 ---
@@ -249,15 +263,8 @@ table(oot_final$risk_rating_segmented)
 `creditools` is built for industry-scale deployment:
 - **Massive Analysis**: Evaluate hundreds of scores and cutoff combinations simultaneously.
 - **Hierarchical Matrixing**: Generate stable, monotonic Risk Matrices (RBP) using Ward or IV-based Rcpp engines.
-- **High-Scale Screening**: "Furar a Folhinha" with thousands of variables and **model-like Predict API**.
+- **High-Scale Screening**: Screen thousands of variables with **model-like Predict API**.
 - **Governance**: A deterministic, reproducible framework for Justification and Model Transition documentation.
-
-## Installation
-
-``` r
-# install.packages("devtools")
-devtools::install_github("matheuspasche/creditools")
-```
 
 ## Documentation
 

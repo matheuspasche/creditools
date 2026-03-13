@@ -24,11 +24,11 @@ find_risk_groups(
 \arguments{
 \item{data}{A data frame containing the historical applicant data.}
 
-\item{score_cols}{A character vector containing the names of the score columns to matrix.}
+\item{score_cols}{Columns containing the names of the score columns to matrix. (Uses \code{tidyselect} syntax).}
 
-\item{default_col}{A character string with the column name indicating the observed default (0 or 1).}
+\item{default_col}{Column name indicating the observed default (0 or 1). (Uses \code{tidyselect} syntax).}
 
-\item{time_col}{A character string with the column name representing the vintage/time cohort (e.g., "YYYY-MM"). It will be internally coerced to Date.}
+\item{time_col}{Optional column name representing the vintage/time cohort (e.g., "YYYY-MM"). (Uses \code{tidyselect} syntax). It will be internally coerced to Date.}
 
 \item{min_vol_ratio}{The minimum acceptable population percentage for a risk group. Groups below this threshold are merged with their nearest risk neighbor. Default is 0.05 (5\%).}
 
@@ -87,11 +87,12 @@ invert their risk ordering (e.g., Group 1 has higher PD than Group 2) in more th
 \donttest{
 # Use the built-in applicants dataset
 data(applicants)
+# Using tidyselect syntax (unquoted names)
 groups <- find_risk_groups(
     data = applicants,
-    score_cols = "old_score",
-    default_col = "defaulted",
-    time_col = "vintage",
+    score_cols = old_score,
+    default_col = defaulted,
+    time_col = vintage,
     max_groups = 5
 )
 
