@@ -12,8 +12,8 @@ stage_cutoff(name, cutoffs, observed_outcome_col = NULL)
 \item{cutoffs}{A named list where names are score columns and values are
 the cutoffs to be applied.}
 
-\item{observed_outcome_col}{The column in the original data that contains the
-observed outcome for this stage (0 or 1), if it exists. Used for \code{keep_in} analysis.}
+\item{observed_outcome_col}{Column in the original data that contains the
+observed outcome for this stage (0 or 1), if it exists. (Uses \code{tidyselect} syntax).}
 }
 \value{
 A \code{credit_policy_stage} object of type \code{cutoff}.
@@ -28,5 +28,10 @@ Define a Cutoff Stage
 }
 \examples{
 # Defines a stage that requires a 'new_score' of at least 650
-credit_stage <- stage_cutoff(name = "credit_check", cutoffs = list(new_score = 650))
+# observed_outcome_col can be unquoted thanks to credit_policy resolution
+credit_stage <- stage_cutoff(
+  name = "credit_check", 
+  cutoffs = list(new_score = 650),
+  observed_outcome_col = approved_v1
+)
 }

@@ -9,9 +9,10 @@ calculate_ks_table(data, score_col, default_col, n_bins = 10)
 \arguments{
 \item{data}{A data frame containing the score and the binary target.}
 
-\item{score_col}{Character. The name of the score column. Higher scores should usually represent lower risk.}
+\item{score_col}{Column for the score. (Uses \code{tidyselect} syntax).
+Higher scores should usually represent lower risk.}
 
-\item{default_col}{Character. The name of the target column (e.g., defaulted = 1, non-event = 0).}
+\item{default_col}{Column for the target. (Uses \code{tidyselect} syntax, e.g., defaulted = 1, non-event = 0).}
 
 \item{n_bins}{Integer. The number of quantiles to split the data into. Default is 10 (deciles).}
 }
@@ -35,8 +36,11 @@ statistic. This table is a standard tool for assessing model discrimination powe
 }
 \examples{
 data(applicants)
-# Standard Decile Table
-calculate_ks_table(applicants, "old_score", "defaulted", n_bins = 10)
+# Standard Decile Table using names
+calculate_ks_table(applicants, old_score, defaulted, n_bins = 10)
+
+# Using strings (works thanks to tidyselect)
+calculate_ks_table(applicants, "old_score", "defaulted")
 }
 \seealso{
 Other performance: 

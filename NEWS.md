@@ -1,3 +1,19 @@
+# creditools 0.5.1: "Tidyselect Refactor & Efficient Frontier"
+
+*   **Efficient Frontier Wrapper**:
+    - Introduced `calculate_efficient_frontier()`, a high-level wrapper that automates the process of finding optimal cutoffs and extracting the Pareto frontier in a single step.
+*   **Tidyselect Standardization**:
+    - Core functions (`find_risk_groups`, `screen_risk_segments`, `calculate_ks_table`) now consistently support `tidyselect` syntax for column selection.
+    - `credit_policy()` implements a hybrid resolution logic, supporting both unquoted symbols and variable names.
+*   **Documentation Polish**:
+    - Standardized all package documentation, vignettes, and messages to English.
+    - Improved README layout and formatting (moving Installation to the top, using `kbl()` for tables).
+    - Added a professional hexagonal logo.
+    - Resolved LaTeX syntax errors in PDF manual generation.
+*   **Robustness**:
+    - Enhanced validation for `credit_policy` arguments with clear error messages.
+    - Improved handling of optional columns in simulation and grouping engines.
+
 # creditools 0.5.0: "High-Performance Release"
 
 *   **Temporal Stability Engine**:

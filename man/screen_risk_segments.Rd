@@ -2,7 +2,7 @@
 % Please edit documentation in R/screening.R
 \name{screen_risk_segments}
 \alias{screen_risk_segments}
-\title{High-Scale Risk Segmentation Screening (Furar a Folhinha)}
+\title{High-Scale Risk Tier Breakdown}
 \usage{
 screen_risk_segments(
   data,
@@ -21,11 +21,11 @@ screen_risk_segments(
 \arguments{
 \item{data}{A data frame containing the historical data.}
 
-\item{base_risk_col}{Character. The name of the existing risk group/rating column.}
+\item{base_risk_col}{Column containing existing risk group/rating. (Uses \code{tidyselect} syntax).}
 
 \item{candidate_cols}{Columns to test for segmentation power. (Uses \code{tidyselect} syntax).}
 
-\item{default_col}{Character. The binary target column name (e.g., 0/1).}
+\item{default_col}{Binary target column name (e.g., 0/1). (Uses \code{tidyselect} syntax).}
 
 \item{n_bins}{Integer. Number of quantiles to use for discretizing candidate variables. Default is 10.}
 
@@ -56,7 +56,7 @@ for high scalability, allowing the analysis of thousands of candidate variables
 against a baseline grouping.
 }
 \details{
-\subsection{High-Scale Screening (Furar a Folhinha)}{
+\subsection{High-Scale Tier Breakdown}{
 
 This function identifies which variables can most effectively "break" or further refine
 existing risk groups. It is particularly useful for finding sub-segments (e.g., Rating 3.1, 3.2)
@@ -75,15 +75,15 @@ sub-segments are robust and not just artifacts of a specific time period.
 \donttest{
 data(applicants)
 # Create a base grouping first
-base_model <- find_risk_groups(applicants, "old_score", "defaulted", max_groups = 5)
+base_model <- find_risk_groups(applicants, old_score, defaulted, max_groups = 5)
 applicants$rating <- base_model$data$risk_rating
 
 # Screen for variables that can "break" these ratings using tidyselect
 screening <- screen_risk_segments(
     data = applicants,
-    base_risk_col = "rating",
+    base_risk_col = rating,
     candidate_cols = c(new_score, bureau_derogatory), # or everything(), starts_with(), etc.
-    default_col = "defaulted",
+    default_col = defaulted,
     n_bins = 5,
     .progress = TRUE
 )

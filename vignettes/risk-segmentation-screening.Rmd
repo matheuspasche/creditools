@@ -1,6 +1,6 @@
 ---
-title: "Risk Segmentation Screening: Furar a Folhinha"
-subtitle: "Identifying Incremental Discrimination Power within Existing Risk Tiers"
+title: "Risk Segmentation Screening: Incrementing Discrimination"
+subtitle: "Identifying Incremental Power within Existing Risk Tiers"
 author: "Matheus Pasche"
 date: "`r Sys.Date()`"
 output: 
@@ -8,7 +8,7 @@ output:
     toc: true
     number_sections: true
 vignette: >
-  %\VignetteIndexEntry{Risk Segmentation Screening: Furar a Folhinha}
+  %\VignetteIndexEntry{Risk Segmentation Screening: Incrementing Discrimination}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -24,7 +24,7 @@ knitr::opts_chunk$set(
 
 # Introduction
 
-In credit risk management, a common challenge is finding ways to increase approval rates without increasing the overall bad rate. One effective strategy is **Risk Segmentation Screening**, colloquially known as "Furar a Folhinha" (literally "Punching through the sheet").
+In credit risk management, a common challenge is finding ways to increase approval rates without increasing the overall bad rate. One effective strategy is **Risk Segmentation Screening**, often referred to as "Punch-Through Analysis".
 
 The goal is to identify variables that can further segment an existing risk tier (e.g., a specific Rating or Score Band). If a variable can split an "Average" risk group into a "Low-Risk" subgroup and a "High-Risk" subgroup, we can potentially approve more people from the new "Low-Risk" portion.
 
@@ -56,8 +56,8 @@ data <- generate_sample_data(
 # 2. Establish baseline ratings (Rating 1 to 5) using 'old_score'
 base_model <- find_risk_groups(
   data = data,
-  score_cols = "old_score",
-  default_col = "defaulted",
+  score_cols = old_score, # Uses tidyselect!
+  default_col = defaulted,
   max_groups = 5,
   quiet = TRUE
 )
@@ -69,9 +69,9 @@ data$rating <- base_model$data$risk_rating
 # We test 'new_score' and 'bureau_derogatory' as candidates
 screening_results <- screen_risk_segments(
   data = data,
-  base_risk_col = "rating",
+  base_risk_col = rating, # Uses tidyselect!
   candidate_cols = c(new_score, bureau_derogatory, age),
-  default_col = "defaulted",
+  default_col = defaulted,
   n_bins = 5
 )
 
@@ -99,9 +99,9 @@ In practice, you might be testing hundreds or thousands of candidate variables. 
 # Selecting all columns that start with 'bureau_' or 'score_'
 screening_results <- screen_risk_segments(
   data = big_data,
-  base_risk_col = "rating",
+  base_risk_col = rating,
   candidate_cols = c(starts_with("bureau_"), starts_with("score_")),
-  default_col = "defaulted",
+  default_col = defaulted,
   n_bins = 10,
   parallel = TRUE,  # Enable multi-core execution
   .progress = TRUE  # Show progress bar
@@ -125,9 +125,9 @@ While uniform quantiles are fast, you may want to find the **statistically optim
 # Use Ward Clustering to find the 2 most stable sub-segments per rating
 clustered_screening <- screen_risk_segments(
   data = data,
-  base_risk_col = "rating",
+  base_risk_col = rating,
   candidate_cols = c(new_score, bureau_derogatory),
-  default_col = "defaulted",
+  default_col = defaulted,
   n_bins = 20,          # Initial micro-bins
   method = "ward",      # Use clustering engine
   max_groups = 2,       # Create at most 2 groups per tier
@@ -155,7 +155,7 @@ train_data <- data %>% filter(vintage < as.Date("2024-01-01"))
 oot_data <- data %>% filter(vintage >= as.Date("2024-01-01"))
 
 # 1. Train the baseline model
-rating_model <- find_risk_groups(train_data, "old_score", "defaulted", bins = 10, quiet = TRUE)
+rating_model <- find_risk_groups(train_data, old_score, defaulted, bins = 10, quiet = TRUE)
 
 # 2. Apply to OOT
 oot_with_rating <- predict(rating_model, oot_data)
@@ -163,7 +163,7 @@ oot_with_rating <- predict(rating_model, oot_data)
 head(oot_with_rating %>% select(id, old_score, risk_rating))
 ```
 
-### Realizing the Sub-segments ("Furar a Folhinha" on OOT)
+### Realizing the Sub-segments (OOT Validation)
 
 Similarly, `screen_risk_segments()` stores the "Recipe" (quantile boundaries + clustering mapping) for every variable screened. You can then "materialize" any chosen candidate using `predict()`.
 
@@ -171,9 +171,9 @@ Similarly, `screen_risk_segments()` stores the "Recipe" (quantile boundaries + c
 # 1. Screen on Train (using the ratings we created)
 screening_res <- screen_risk_segments(
   data = rating_model$data, 
-  base_risk_col = "risk_rating",
+  base_risk_col = risk_rating,
   candidate_cols = c(new_score, bureau_derogatory),
-  default_col = "defaulted",
+  default_col = defaulted,
   method = "ward"
 )
 

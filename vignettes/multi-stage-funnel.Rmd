@@ -67,10 +67,10 @@ Historically, the policy only considered the `old_score > 600`.
 
 ```{r legacy-policy}
 legacy_policy <- credit_policy(
-  applicant_id_col = "id",
-  score_cols = "old_score",
-  current_approval_col = "approved",
-  actual_default_col = "defaulted"
+  applicant_id_col = id,
+  score_cols = old_score,
+  current_approval_col = approved,
+  actual_default_col = defaulted
 ) %>%
   add_stage(stage_cutoff(name = "legacy_cutoff", cutoffs = list(old_score = 600)))
 
@@ -84,10 +84,10 @@ We first find the optimal cutoffs for our scores, *assuming* the previous demogr
 ```{r optimization}
 # Define the demographic filters base
 base_funnel <- credit_policy(
-  applicant_id_col = "id",
-  score_cols = c("old_score", "new_score"),
-  current_approval_col = "approved",
-  actual_default_col = "defaulted"
+  applicant_id_col = id,
+  score_cols = c(old_score, new_score),
+  current_approval_col = approved,
+  actual_default_col = defaulted
 ) %>%
   add_stage(stage_filter(name = "id_check", condition = "id_valid == 1")) %>%
   add_stage(stage_filter(name = "age_check", condition = "age >= 18")) %>%

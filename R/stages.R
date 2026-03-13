@@ -32,23 +32,31 @@ new_credit_policy_stage <- function(name, type, ...) {
 #' @param name A character string for the name of the stage (e.g., "credit_check").
 #' @param cutoffs A named list where names are score columns and values are
 #'   the cutoffs to be applied.
-#' @param observed_outcome_col The column in the original data that contains the
-#'   observed outcome for this stage (0 or 1), if it exists. Used for `keep_in` analysis.
+#' @param observed_outcome_col Column in the original data that contains the
+#'   observed outcome for this stage (0 or 1), if it exists. (Uses \code{tidyselect} syntax).
 #'
 #' @return A `credit_policy_stage` object of type `cutoff`.
 #' @export
 #' @examples
 #' # Defines a stage that requires a 'new_score' of at least 650
-#' credit_stage <- stage_cutoff(name = "credit_check", cutoffs = list(new_score = 650))
+#' # observed_outcome_col can be unquoted thanks to credit_policy resolution
+#' credit_stage <- stage_cutoff(
+#'   name = "credit_check", 
+#'   cutoffs = list(new_score = 650),
+#'   observed_outcome_col = approved_v1
+#' )
 stage_cutoff <- function(name, cutoffs, observed_outcome_col = NULL) {
   if (!is.list(cutoffs) || is.null(names(cutoffs))) {
     cli::cli_abort("{.arg cutoffs} must be a named list of score cutoffs.")
   }
+  
+  obs_col <- tryCatch(rlang::as_name(rlang::enquo(observed_outcome_col)), error = function(e) observed_outcome_col)
+
   new_credit_policy_stage(
     name = name,
     type = "cutoff",
     cutoffs = cutoffs,
-    observed_outcome_col = observed_outcome_col
+    observed_outcome_col = obs_col
   )
 }
 
@@ -63,8 +71,8 @@ stage_cutoff <- function(name, cutoffs, observed_outcome_col = NULL) {
 #'
 #' @param name A character string for the name of the stage (e.g., "fraud_check").
 #' @param base_rate The base rate for the simulation (e.g., 0.4 for a 40% conversion rate).
-#' @param observed_outcome_col The column in the original data that contains the
-#'   observed outcome for this stage (0 or 1), if it exists.
+#' @param observed_outcome_col Column in the original data that contains the
+#'   observed outcome for this stage (0 or 1), if it exists. (Uses \code{tidyselect} syntax).
 #' @param stress_by_score An optional named list to stress the `base_rate` based on a
 #'   score's value. Uses a monotonic increase assumption. See `stress_monotonic_increase()`.
 #'
@@ -79,11 +87,14 @@ stage_rate <- function(name, base_rate, observed_outcome_col = NULL, stress_by_s
       cli::cli_abort("{.arg stress_by_score} must be a named list with 'score_col', 'rate_at_min', and 'rate_at_max'.")
     }
   }
+  
+  obs_col <- tryCatch(rlang::as_name(rlang::enquo(observed_outcome_col)), error = function(e) observed_outcome_col)
+
   new_credit_policy_stage(
     name = name,
     type = "rate",
     base_rate = base_rate,
-    observed_outcome_col = observed_outcome_col,
+    observed_outcome_col = obs_col,
     stress_by_score = stress_by_score
   )
 }
@@ -98,8 +109,8 @@ stage_rate <- function(name, base_rate, observed_outcome_col = NULL, stress_by_s
 #' @param condition A character string representing the logical condition to be
 #'   evaluated dynamically over the applicant data. Variables used in the string
 #'   must exist in the data frame during simulation.
-#' @param observed_outcome_col The column in the original data that contains the
-#'   observed outcome for this stage (0 or 1), if it exists.
+#' @param observed_outcome_col Column in the original data that contains the
+#'   observed outcome for this stage (0 or 1), if it exists. (Uses \code{tidyselect} syntax).
 #'
 #' @return A `credit_policy_stage` object of type `filter`.
 #' @export
@@ -110,10 +121,13 @@ stage_filter <- function(name, condition, observed_outcome_col = NULL) {
   if (!is.character(condition) || length(condition) != 1) {
     cli::cli_abort("{.arg condition} must be a single string representing a logical statement.")
   }
+  
+  obs_col <- tryCatch(rlang::as_name(rlang::enquo(observed_outcome_col)), error = function(e) observed_outcome_col)
+
   new_credit_policy_stage(
     name = name,
     type = "filter",
     condition = condition,
-    observed_outcome_col = observed_outcome_col
+    observed_outcome_col = obs_col
   )
 }

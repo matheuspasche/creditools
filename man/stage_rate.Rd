@@ -16,8 +16,8 @@ stage_rate(
 
 \item{base_rate}{The base rate for the simulation (e.g., 0.4 for a 40\% conversion rate).}
 
-\item{observed_outcome_col}{The column in the original data that contains the
-observed outcome for this stage (0 or 1), if it exists.}
+\item{observed_outcome_col}{Column in the original data that contains the
+observed outcome for this stage (0 or 1), if it exists. (Uses \code{tidyselect} syntax).}
 
 \item{stress_by_score}{An optional named list to stress the \code{base_rate} based on a
 score's value. Uses a monotonic increase assumption. See \code{stress_monotonic_increase()}.}
