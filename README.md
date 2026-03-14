@@ -495,8 +495,8 @@ Value) and PD Spread across candidate variables for each of your
 existing risk tiers.
 
 ``` r
-# 1. Establish existing ratings
-rating_model <- find_risk_groups(sim_data, "old_score", "defaulted", bins = 10, quiet = TRUE)
+# 1. Establish existing ratings (Simplified for demo)
+rating_model <- find_risk_groups(sim_data, "old_score", "defaulted", bins = 5, quiet = TRUE)
 
 # 2. Screen for variables that can "break" these ratings
 screening_res <- screen_risk_segments(
@@ -581,27 +581,27 @@ new_score
 
 <td style="text-align:right;">
 
-0.0340023
+0.0350171
 </td>
 
 <td style="text-align:right;">
 
-0.074
+0.1183551
 </td>
 
 <td style="text-align:right;">
 
-0.1237525
+0.2004008
 </td>
 
 <td style="text-align:right;">
 
-0.0497525
+0.0820457
 </td>
 
 <td style="text-align:right;">
 
-5006
+9973
 </td>
 
 </tr>
@@ -620,27 +620,27 @@ bureau_derogatory
 
 <td style="text-align:right;">
 
-0.0202042
+0.0115534
 </td>
 
 <td style="text-align:right;">
 
-0.082
+0.1384152
 </td>
 
 <td style="text-align:right;">
 
-0.1197605
+0.1873747
 </td>
 
 <td style="text-align:right;">
 
-0.0377605
+0.0489595
 </td>
 
 <td style="text-align:right;">
 
-5006
+9973
 </td>
 
 </tr>
@@ -659,27 +659,27 @@ age
 
 <td style="text-align:right;">
 
-0.0052413
+0.0016241
 </td>
 
 <td style="text-align:right;">
 
-0.092
+0.1474423
 </td>
 
 <td style="text-align:right;">
 
-0.1157685
+0.1653307
 </td>
 
 <td style="text-align:right;">
 
-0.0237685
+0.0178883
 </td>
 
 <td style="text-align:right;">
 
-5006
+9973
 </td>
 
 </tr>
@@ -703,11 +703,24 @@ oot_with_rating <- predict(rating_model, oot_data)
 # Materialize a specific sub-segmentation chosen during screening
 oot_final <- predict(screening_res, oot_with_rating, variable = "new_score")
 
-# Distribution of the new segmented rating
+# Distribution of the new segmented rating with risk metrics
+# We show a clean summary of the Top 10 segments by volume
 oot_final %>%
-  count(risk_rating_segmented) %>%
-  rename(Rating = risk_rating_segmented, Volume = n) %>%
-  kbl(caption = "OOT Deployment: Segmented Rating Distribution") %>%
+  group_by(Rating = risk_rating_segmented) %>%
+  summarise(
+    Volume = n(),
+    `Volume %` = n() / nrow(oot_final),
+    `Bad Rate` = mean(defaulted, na.rm = TRUE),
+    `Avg Score` = mean(new_score, na.rm = TRUE)
+  ) %>%
+  mutate(
+    `Volume %` = percent(`Volume %`, accuracy = 0.1),
+    `Bad Rate` = percent(`Bad Rate`, accuracy = 0.01),
+    `Avg Score` = round(`Avg Score`, 0)
+  ) %>%
+  arrange(desc(Volume)) %>%
+  slice(1:10) %>% # Keep it professional and concise
+  kbl(caption = "OOT Deployment: Top Segmented Ratings (Stability & Risk Stats)") %>%
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
 
@@ -715,7 +728,7 @@ oot_final %>%
 
 <caption>
 
-OOT Deployment: Segmented Rating Distribution
+OOT Deployment: Top Segmented Ratings (Stability & Risk Stats)
 </caption>
 
 <thead>
@@ -730,6 +743,21 @@ Rating
 <th style="text-align:right;">
 
 Volume
+</th>
+
+<th style="text-align:left;">
+
+Volume %
+</th>
+
+<th style="text-align:left;">
+
+Bad Rate
+</th>
+
+<th style="text-align:right;">
+
+Avg Score
 </th>
 
 </tr>
@@ -747,651 +775,22 @@ Volume
 
 <td style="text-align:right;">
 
-241
+343
 </td>
-
-</tr>
-
-<tr>
 
 <td style="text-align:left;">
 
-1.3
+6.9%
+</td>
+
+<td style="text-align:left;">
+
+5.54%
 </td>
 
 <td style="text-align:right;">
 
-5
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-1.4
-</td>
-
-<td style="text-align:right;">
-
-8
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-1.5
-</td>
-
-<td style="text-align:right;">
-
-8
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-1.6
-</td>
-
-<td style="text-align:right;">
-
-18
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-1.7
-</td>
-
-<td style="text-align:right;">
-
-38
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-1.8
-</td>
-
-<td style="text-align:right;">
-
-75
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-1.9
-</td>
-
-<td style="text-align:right;">
-
-107
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-10.1
-</td>
-
-<td style="text-align:right;">
-
-216
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-10.2
-</td>
-
-<td style="text-align:right;">
-
-95
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-10.3
-</td>
-
-<td style="text-align:right;">
-
-70
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-10.4
-</td>
-
-<td style="text-align:right;">
-
-51
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-10.5
-</td>
-
-<td style="text-align:right;">
-
-26
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-10.6
-</td>
-
-<td style="text-align:right;">
-
-13
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-10.7
-</td>
-
-<td style="text-align:right;">
-
-6
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-10.8
-</td>
-
-<td style="text-align:right;">
-
-4
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-10.9
-</td>
-
-<td style="text-align:right;">
-
-1
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-2.1
-</td>
-
-<td style="text-align:right;">
-
-2
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-2.10
-</td>
-
-<td style="text-align:right;">
-
-102
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-2.2
-</td>
-
-<td style="text-align:right;">
-
-3
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-2.3
-</td>
-
-<td style="text-align:right;">
-
-13
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-2.4
-</td>
-
-<td style="text-align:right;">
-
-16
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-2.5
-</td>
-
-<td style="text-align:right;">
-
-37
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-2.6
-</td>
-
-<td style="text-align:right;">
-
-49
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-2.7
-</td>
-
-<td style="text-align:right;">
-
-84
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-2.8
-</td>
-
-<td style="text-align:right;">
-
-98
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-2.9
-</td>
-
-<td style="text-align:right;">
-
-118
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-3.1
-</td>
-
-<td style="text-align:right;">
-
-7
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-3.10
-</td>
-
-<td style="text-align:right;">
-
-67
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-3.2
-</td>
-
-<td style="text-align:right;">
-
-15
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-3.3
-</td>
-
-<td style="text-align:right;">
-
-21
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-3.4
-</td>
-
-<td style="text-align:right;">
-
-39
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-3.5
-</td>
-
-<td style="text-align:right;">
-
-47
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-3.6
-</td>
-
-<td style="text-align:right;">
-
-65
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-3.7
-</td>
-
-<td style="text-align:right;">
-
-74
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-3.8
-</td>
-
-<td style="text-align:right;">
-
-84
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-3.9
-</td>
-
-<td style="text-align:right;">
-
-80
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-4.1
-</td>
-
-<td style="text-align:right;">
-
-11
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-4.10
-</td>
-
-<td style="text-align:right;">
-
-53
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-4.2
-</td>
-
-<td style="text-align:right;">
-
-16
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-4.3
-</td>
-
-<td style="text-align:right;">
-
-35
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-4.4
-</td>
-
-<td style="text-align:right;">
-
-58
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-4.5
-</td>
-
-<td style="text-align:right;">
-
-60
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-4.6
-</td>
-
-<td style="text-align:right;">
-
-73
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-4.7
-</td>
-
-<td style="text-align:right;">
-
-64
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-4.8
-</td>
-
-<td style="text-align:right;">
-
-65
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-4.9
-</td>
-
-<td style="text-align:right;">
-
-63
+955
 </td>
 
 </tr>
@@ -1405,7 +804,22 @@ Volume
 
 <td style="text-align:right;">
 
-11
+340
+</td>
+
+<td style="text-align:left;">
+
+6.8%
+</td>
+
+<td style="text-align:left;">
+
+17.06%
+</td>
+
+<td style="text-align:right;">
+
+46
 </td>
 
 </tr>
@@ -1414,12 +828,27 @@ Volume
 
 <td style="text-align:left;">
 
-5.10
+1.9
 </td>
 
 <td style="text-align:right;">
 
-20
+225
+</td>
+
+<td style="text-align:left;">
+
+4.5%
+</td>
+
+<td style="text-align:left;">
+
+8.44%
+</td>
+
+<td style="text-align:right;">
+
+851
 </td>
 
 </tr>
@@ -1433,7 +862,51 @@ Volume
 
 <td style="text-align:right;">
 
-33
+212
+</td>
+
+<td style="text-align:left;">
+
+4.2%
+</td>
+
+<td style="text-align:left;">
+
+12.74%
+</td>
+
+<td style="text-align:right;">
+
+145
+</td>
+
+</tr>
+
+<tr>
+
+<td style="text-align:left;">
+
+1.8
+</td>
+
+<td style="text-align:right;">
+
+173
+</td>
+
+<td style="text-align:left;">
+
+3.5%
+</td>
+
+<td style="text-align:left;">
+
+8.09%
+</td>
+
+<td style="text-align:right;">
+
+752
 </td>
 
 </tr>
@@ -1447,7 +920,22 @@ Volume
 
 <td style="text-align:right;">
 
-52
+170
+</td>
+
+<td style="text-align:left;">
+
+3.4%
+</td>
+
+<td style="text-align:left;">
+
+17.06%
+</td>
+
+<td style="text-align:right;">
+
+247
 </td>
 
 </tr>
@@ -1456,12 +944,27 @@ Volume
 
 <td style="text-align:left;">
 
-5.4
+4.4
 </td>
 
 <td style="text-align:right;">
 
-55
+157
+</td>
+
+<td style="text-align:left;">
+
+3.1%
+</td>
+
+<td style="text-align:left;">
+
+17.20%
+</td>
+
+<td style="text-align:right;">
+
+342
 </td>
 
 </tr>
@@ -1470,12 +973,27 @@ Volume
 
 <td style="text-align:left;">
 
-5.5
+2.8
 </td>
 
 <td style="text-align:right;">
 
-59
+149
+</td>
+
+<td style="text-align:left;">
+
+3.0%
+</td>
+
+<td style="text-align:left;">
+
+4.70%
+</td>
+
+<td style="text-align:right;">
+
+749
 </td>
 
 </tr>
@@ -1484,12 +1002,27 @@ Volume
 
 <td style="text-align:left;">
 
-5.6
+2.9
 </td>
 
 <td style="text-align:right;">
 
-59
+143
+</td>
+
+<td style="text-align:left;">
+
+2.9%
+</td>
+
+<td style="text-align:left;">
+
+7.69%
+</td>
+
+<td style="text-align:right;">
+
+847
 </td>
 
 </tr>
@@ -1498,600 +1031,27 @@ Volume
 
 <td style="text-align:left;">
 
-5.7
+4.2
 </td>
 
 <td style="text-align:right;">
 
-76
+141
 </td>
-
-</tr>
-
-<tr>
 
 <td style="text-align:left;">
 
-5.8
+2.8%
 </td>
-
-<td style="text-align:right;">
-
-58
-</td>
-
-</tr>
-
-<tr>
 
 <td style="text-align:left;">
 
-5.9
+16.31%
 </td>
 
 <td style="text-align:right;">
 
-49
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-6.1
-</td>
-
-<td style="text-align:right;">
-
-33
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-6.10
-</td>
-
-<td style="text-align:right;">
-
-13
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-6.2
-</td>
-
-<td style="text-align:right;">
-
-52
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-6.3
-</td>
-
-<td style="text-align:right;">
-
-66
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-6.4
-</td>
-
-<td style="text-align:right;">
-
-65
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-6.5
-</td>
-
-<td style="text-align:right;">
-
-74
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-6.6
-</td>
-
-<td style="text-align:right;">
-
-63
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-6.7
-</td>
-
-<td style="text-align:right;">
-
-64
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-6.8
-</td>
-
-<td style="text-align:right;">
-
-56
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-6.9
-</td>
-
-<td style="text-align:right;">
-
-32
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-7.1
-</td>
-
-<td style="text-align:right;">
-
-36
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-7.10
-</td>
-
-<td style="text-align:right;">
-
-7
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-7.2
-</td>
-
-<td style="text-align:right;">
-
-65
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-7.3
-</td>
-
-<td style="text-align:right;">
-
-62
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-7.4
-</td>
-
-<td style="text-align:right;">
-
-89
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-7.5
-</td>
-
-<td style="text-align:right;">
-
-74
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-7.6
-</td>
-
-<td style="text-align:right;">
-
-64
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-7.7
-</td>
-
-<td style="text-align:right;">
-
-44
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-7.8
-</td>
-
-<td style="text-align:right;">
-
-33
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-7.9
-</td>
-
-<td style="text-align:right;">
-
-25
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-8.1
-</td>
-
-<td style="text-align:right;">
-
-73
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-8.10
-</td>
-
-<td style="text-align:right;">
-
-4
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-8.2
-</td>
-
-<td style="text-align:right;">
-
-76
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-8.3
-</td>
-
-<td style="text-align:right;">
-
-72
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-8.4
-</td>
-
-<td style="text-align:right;">
-
-68
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-8.5
-</td>
-
-<td style="text-align:right;">
-
-45
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-8.6
-</td>
-
-<td style="text-align:right;">
-
-47
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-8.7
-</td>
-
-<td style="text-align:right;">
-
-40
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-8.8
-</td>
-
-<td style="text-align:right;">
-
-23
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-8.9
-</td>
-
-<td style="text-align:right;">
-
-17
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-9.1
-</td>
-
-<td style="text-align:right;">
-
-124
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-9.10
-</td>
-
-<td style="text-align:right;">
-
-1
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-9.2
-</td>
-
-<td style="text-align:right;">
-
-117
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-9.3
-</td>
-
-<td style="text-align:right;">
-
-100
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-9.4
-</td>
-
-<td style="text-align:right;">
-
-85
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-9.5
-</td>
-
-<td style="text-align:right;">
-
-54
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-9.6
-</td>
-
-<td style="text-align:right;">
-
-33
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-9.7
-</td>
-
-<td style="text-align:right;">
-
-13
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-9.8
-</td>
-
-<td style="text-align:right;">
-
-12
-</td>
-
-</tr>
-
-<tr>
-
-<td style="text-align:left;">
-
-9.9
-</td>
-
-<td style="text-align:right;">
-
-6
+150
 </td>
 
 </tr>
@@ -2101,16 +1061,6 @@ Volume
 </table>
 
 ------------------------------------------------------------------------
-
-## Capabilities Summary
-
-`creditools` is built for industry-scale deployment: - **Massive
-Analysis**: Evaluate hundreds of scores and cutoff combinations
-simultaneously. - **Hierarchical Matrixing**: Generate stable, monotonic
-Risk Matrices (RBP) using Ward or IV-based Rcpp engines. - **High-Scale
-Screening**: Screen thousands of variables with **model-like Predict
-API**. - **Governance**: A deterministic, reproducible framework for
-Justification and Model Transition documentation.
 
 ## Documentation
 
