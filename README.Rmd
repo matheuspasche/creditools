@@ -248,23 +248,25 @@ oot_with_rating <- predict(rating_model, oot_data)
 # Materialize a specific sub-segmentation chosen during screening
 oot_final <- predict(screening_res, oot_with_rating, variable = "new_score")
 
-# Distribution of the new segmented rating
+# Distribution of the new segmented rating with risk metrics
 oot_final %>%
-  count(risk_rating_segmented) %>%
-  rename(Rating = risk_rating_segmented, Volume = n) %>%
-  kbl(caption = "OOT Deployment: Segmented Rating Distribution") %>%
+  group_by(Rating = risk_rating_segmented) %>%
+  summarise(
+    Volume = n(),
+    `Volume %` = n() / nrow(oot_final),
+    `Bad Rate` = mean(defaulted, na.rm = TRUE),
+    `Avg Score` = mean(new_score, na.rm = TRUE)
+  ) %>%
+  mutate(
+    `Volume %` = percent(`Volume %`, accuracy = 0.1),
+    `Bad Rate` = percent(`Bad Rate`, accuracy = 0.01),
+    `Avg Score` = round(`Avg Score`, 0)
+  ) %>%
+  kbl(caption = "OOT Deployment: Risk-Based Segmented Distribution") %>%
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
 
 ---
-
-## Capabilities Summary
-
-`creditools` is built for industry-scale deployment:
-- **Massive Analysis**: Evaluate hundreds of scores and cutoff combinations simultaneously.
-- **Hierarchical Matrixing**: Generate stable, monotonic Risk Matrices (RBP) using Ward or IV-based Rcpp engines.
-- **High-Scale Screening**: Screen thousands of variables with **model-like Predict API**.
-- **Governance**: A deterministic, reproducible framework for Justification and Model Transition documentation.
 
 ## Documentation
 
