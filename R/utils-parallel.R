@@ -27,6 +27,12 @@
         workers_count <- max(1, future::availableCores() - 1)
     }
 
+    # CRAN limit: respect _R_CHECK_LIMIT_CORES_
+    check_limit <- Sys.getenv("_R_CHECK_LIMIT_CORES_", "")
+    if (check_limit == "TRUE" || check_limit == "true") {
+        workers_count <- min(workers_count, 2)
+    }
+
     # Check if we already have a parallel plan active (e.g. from a parent call)
     current_plan <- future::plan()
     is_sequential <- inherits(current_plan, "sequential")
@@ -37,7 +43,7 @@
         do.call("on.exit", list(quote(future::plan(future::sequential)), add = TRUE), envir = env)
     }
 
-    return(list(parallel = TRUE))
+    return(list(parallel = TRUE, workers_count = workers_count))
 }
 
 #' Internal wrapper for parallel map operations

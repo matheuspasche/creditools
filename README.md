@@ -62,7 +62,7 @@ results$summary %>%
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
 
-<table class="table table-striped table-hover" style="width: auto !important; margin-left: auto; margin-right: auto;">
+<table class="table table-striped table-hover" style="color: black; width: auto !important; margin-left: auto; margin-right: auto;">
 
 <caption>
 
@@ -321,7 +321,7 @@ iso_summary %>%
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
 
-<table class="table table-striped table-hover" style="width: auto !important; margin-left: auto; margin-right: auto;">
+<table class="table table-striped table-hover" style="color: black; width: auto !important; margin-left: auto; margin-right: auto;">
 
 <caption>
 
@@ -515,7 +515,7 @@ screening_res$metrics %>%
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
 
-<table class="table table-striped table-hover" style="width: auto !important; margin-left: auto; margin-right: auto;">
+<table class="table table-striped table-hover" style="color: black; width: auto !important; margin-left: auto; margin-right: auto;">
 
 <caption>
 
@@ -724,7 +724,7 @@ oot_final %>%
   kable_styling(bootstrap_options = c("striped", "hover"), full_width = FALSE)
 ```
 
-<table class="table table-striped table-hover" style="width: auto !important; margin-left: auto; margin-right: auto;">
+<table class="table table-striped table-hover" style="color: black; width: auto !important; margin-left: auto; margin-right: auto;">
 
 <caption>
 

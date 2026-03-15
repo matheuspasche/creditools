@@ -489,10 +489,10 @@ find_pairwise_risk_groups <- function(data,
                 optimization_method = optimization_method
             ), inner_args))
             return(list(challenger = challenger, result = res))
-        }, mc.cores = parallel_setup$n_workers %||% (parallel::detectCores() - 1))
+        }, mc.cores = parallel_setup$workers_count)
     } else if (parallel) {
         # Use parLapply on Windows (or as fallback)
-        cl <- parallel::makeCluster(parallel_setup$n_workers %||% (parallel::detectCores() - 1))
+        cl <- parallel::makeCluster(parallel_setup$workers_count)
         on.exit(parallel::stopCluster(cl), add = TRUE)
         
         # Export necessary data and functions
